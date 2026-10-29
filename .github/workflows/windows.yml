@@ -30,6 +30,10 @@ jobs:
         run: |
           npm run build
           npm test
+      - name: Install headless Chromium for UI tests
+        run: npx playwright install --only-shell chromium
+      - name: Browser UI regression tests on Windows
+        run: npm run test:e2e
       - name: Rust file-safety tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked
       - name: Build unsigned Windows installer

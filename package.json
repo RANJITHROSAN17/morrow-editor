@@ -1,6 +1,6 @@
 {
   "name": "morrow-editor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "A small, local-first text and code editor for Windows.",

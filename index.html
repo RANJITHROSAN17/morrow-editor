@@ -35,6 +35,7 @@
       <button class="icon-button" data-action="settings" title="Settings (Ctrl+,)" aria-label="Settings" data-icon="settings"></button>
     </div>
   </header>
+  <div class="storage-warning" id="storage-warning" role="alert" hidden><span id="storage-warning-text"></span><button id="retry-recovery-cleanup" class="storage-retry" hidden>Retry removal</button></div>
   <div class="body-layout">
     <aside class="sidebar" id="sidebar" aria-label="Workspace">
       <div class="sidebar-heading"><span>YOUR WORKSPACE</span><button class="icon-button small" data-action="sidebar" title="Hide sidebar (Ctrl+B)" aria-label="Hide sidebar" data-icon="panel"></button></div>
@@ -70,7 +71,7 @@
         <div class="setting-box"><div><strong>Inline suggestions</strong><p>Suggest code as you type</p></div><button class="switch" id="ai-toggle" role="switch" aria-checked="false" aria-label="Enable AI suggestions"><span></span></button></div>
         <div class="assistant-status" id="ai-status"><span class="status-dot"></span><span>Off by default</span></div>
         <div class="assistant-divider"></div>
-        <div class="assistant-icon" data-icon="lock"></div><h3>Thoughtfully local.</h3><p>Your nearby text is sent to Ollama on this computer. Choose a local model to keep it on your device. No account or API key needed.</p>
+        <div class="assistant-icon" data-icon="lock"></div><h3>Thoughtfully local.</h3><p>Your nearby text is sent to Ollama on this computer. Choose a local model to keep it on your device. Suggestions turn off when Morrow restarts; enable them again when needed.</p>
         <div class="assistant-steps"><div><span>01</span><p>Install and start <strong>Ollama</strong> on your PC.</p></div><div><span>02</span><p>Download a code model in your terminal:</p></div><code>ollama pull qwen2.5-coder:1.5b</code><div><span>03</span><p>Turn on suggestions above. Press <kbd>Tab</kbd> to accept, <kbd>Esc</kbd> to dismiss.</p></div></div>
         <label class="model-label" for="model-name">MODEL NAME</label><input id="model-name" class="input" value="qwen2.5-coder:1.5b" spellcheck="false"><button id="test-ai" class="outline-button"><span data-icon="refresh"></span> Check connection</button>
         <p class="model-note">Model download is separate (about 1 GB for the suggested model). Performance depends on your PC.</p>
@@ -84,9 +85,10 @@
   <div class="settings-row"><div><strong>Word wrap</strong><small>Keep long lines within the editor.</small></div><button class="switch" id="setting-wrap" role="switch" aria-label="Word wrap" aria-checked="false"><span></span></button></div>
   <div class="settings-row"><div><strong>Remember my session</strong><small>Store local, unencrypted recovery copies of open files and unsaved text.</small></div><button class="switch" id="setting-recovery" role="switch" aria-label="Remember my session" aria-checked="false"><span></span></button></div>
   <div class="settings-row"><div><strong>Editor font size</strong><small>Make the words just right.</small></div><select id="setting-font" class="input compact"><option value="12">12 px</option><option value="13">13 px</option><option value="14">14 px</option><option value="15">15 px</option><option value="16">16 px</option><option value="18">18 px</option><option value="20">20 px</option><option value="22">22 px</option></select></div>
-</div><p class="modal-footnote"><span data-icon="lock"></span> Recovery copies are not backups. Save important files regularly.</p></dialog>
+</div><p class="settings-storage-message" id="settings-storage-message" role="status" hidden></p><p class="modal-footnote"><span data-icon="lock"></span> Recovery copies are not backups. Save important files regularly.</p></dialog>
 <dialog id="help-dialog" class="modal"><div class="modal-header"><div><span class="eyebrow">THE LITTLE THINGS</span><h2>Keyboard shortcuts</h2></div><button class="icon-button" data-close-dialog="help-dialog" aria-label="Close shortcuts" data-icon="close"></button></div><div class="shortcut-grid"><span>New file</span><kbd>Ctrl N</kbd><span>Open file</span><kbd>Ctrl O</kbd><span>Save / Save as</span><kbd>Ctrl S / Ctrl Shift S</kbd><span>Close tab</span><kbd>Ctrl W</kbd><span>Find / Replace</span><kbd>Ctrl F / Ctrl H</kbd><span>Next / previous tab</span><kbd>Ctrl Tab / Ctrl Shift Tab</kbd><span>Toggle word wrap</span><kbd>Alt Z</kbd><span>Toggle sidebar</span><kbd>Ctrl B</kbd><span>AI suggestion</span><kbd>Ctrl Shift Space</kbd><span>Accept / dismiss AI</span><kbd>Tab / Esc</kbd></div></dialog>
 <dialog id="confirm-dialog" class="modal confirm-modal"><div class="modal-header"><div><span class="eyebrow" id="confirm-eyebrow">BEFORE YOU GO</span><h2 id="confirm-title">Save changes?</h2></div><button class="icon-button" id="confirm-x" aria-label="Cancel" data-icon="close"></button></div><p class="confirm-message" id="confirm-message"></p><div class="modal-actions" id="confirm-actions"></div></dialog>
+<dialog id="open-errors-dialog" class="modal" aria-labelledby="open-errors-title"><div class="modal-header"><div><span class="eyebrow">FILE OPEN REPORT</span><h2 id="open-errors-title">Some files could not be opened</h2></div><button class="icon-button" data-close-dialog="open-errors-dialog" aria-label="Close file open report" data-icon="close"></button></div><p class="modal-intro" id="open-errors-summary"></p><ul class="open-errors-list" id="open-errors-list"></ul><div class="modal-actions"><button data-close-dialog="open-errors-dialog" class="primary">Got it</button></div></dialog>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <script type="module" src="/src/main.ts"></script>
 </body>

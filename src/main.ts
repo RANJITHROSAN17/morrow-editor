@@ -10,7 +10,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { allLanguages, clearGhost, createEditorState, findLanguage, hasGhost, indentCompartment, languageCompartment, languageLabel, showGhost, wrapCompartment } from './editor';
 import { decodeFile, encodeFile, sha256, type LineEnding, type TextEncoding } from './encoding';
-import { chooseSaveTarget, desktop, ExternalChangeError, pickFiles, readNative, refPath, writeTo, type FileRef, type OpenedFile } from './platform';
+import { chooseSaveTarget, desktop, ExternalChangeError, pickFiles, readNative, refPath, writeTo, type FileRef, type OpenedFile, type OpenFailure } from './platform';
 import { complete, listModels, DEFAULT_MODEL } from './ai';
 import { loadSession, loadSettings, saveSession, saveSettings, type SavedDocument, type Session, type Settings } from './storage';
 import { MARKDOWN_SAMPLE, PYTHON_SAMPLE } from './samples';
@@ -46,7 +46,12 @@ interface Doc {
 interface ConfirmButton { id: string; label: string; style?: 'primary' | 'danger'; }
 
 class MorrowApp {
-  private settings: Settings = loadSettings();
+  private settings: Settings;
+  private settingsReadFailed: boolean;
+  private settingsSaveFailed = false;
+  private recoveryBlocked = false;
+  private recoveryCleanupFailed = false;
+  private recoveryOperationBusy = false;
   private docs: Doc[] = [];
   private activeId = '';
   private view!: EditorView;
@@ -65,6 +70,12 @@ class MorrowApp {
   private findCase = false;
   private closing = false;
 
+  constructor() {
+    const loaded = loadSettings();
+    this.settings = loaded.settings;
+    this.settingsReadFailed = loaded.readFailed;
+  }
+
   private get active(): Doc { return this.docs.find((doc) => doc.id === this.activeId) || this.docs[0]; }
 
   async start(): Promise<void> {
@@ -76,13 +87,20 @@ class MorrowApp {
     if (this.settings.recovery) {
       try {
         const session = await loadSession();
-        if (session?.version === 1 && Array.isArray(session.documents) && session.documents.length) {
-          for (const saved of session.documents.slice(0, 100)) {
-            if (typeof saved.name === 'string' && typeof saved.text === 'string' && typeof saved.id === 'string') this.docs.push(this.restoreDoc(saved));
-          }
+        if (session?.documents.length) {
+          // Do not silently drop tabs from large saved sessions.
+          for (const saved of session.documents) this.docs.push(this.restoreDoc(saved));
           if (this.docs.length) { this.activeId = this.docs.some((doc) => doc.id === session.activeId) ? session.activeId : this.docs[0].id; restored = true; }
         }
-      } catch { this.recoveryFailed = true; }
+      } catch {
+        // Never overwrite an unreadable or incompatible snapshot with the example session.
+        this.recoveryFailed = true;
+        this.recoveryBlocked = true;
+      }
+    } else if (!this.settingsReadFailed) {
+      // A previous deletion could have failed. Retry only when an explicit off setting was readable.
+      try { await saveSession(null); }
+      catch { this.recoveryCleanupFailed = true; }
     }
     if (!restored) {
       // Examples are real editable buffers, clearly labelled and never silently saved to disk.
@@ -195,15 +213,16 @@ class MorrowApp {
   }
 
   private scheduleRecovery(): void {
-    if (!this.settings.recovery || !this.view) return;
+    if (!this.settings.recovery || this.recoveryBlocked || !this.view) return;
     window.clearTimeout(this.recoveryTimer);
     this.recoveryTimer = window.setTimeout(() => { void this.flushRecovery(); }, 1200);
   }
   private async flushRecovery(): Promise<boolean> {
     if (!this.settings.recovery || !this.view) return true;
+    if (this.recoveryBlocked) return false;
     window.clearTimeout(this.recoveryTimer);
-    try { await saveSession(this.snapshot()); this.recoveryFailed = false; this.renderRecoveryStatus(); return true; }
-    catch { if (!this.recoveryFailed) this.toast('Could not save a local recovery copy. Save your work to a file.'); this.recoveryFailed = true; this.renderRecoveryStatus(); return false; }
+    try { await saveSession(this.snapshot()); this.recoveryFailed = false; this.renderRecoveryStatus(); this.renderStorageWarning(); return true; }
+    catch { if (!this.recoveryFailed) this.toast('Could not save a local recovery copy. Save your work to a file.'); this.recoveryFailed = true; this.renderRecoveryStatus(); this.renderStorageWarning(); return false; }
   }
 
   private populateLanguages(): void {
@@ -253,9 +272,32 @@ class MorrowApp {
 
   private async openFiles(): Promise<void> {
     try {
-      const files = await pickFiles();
-      for (const file of files) await this.addOpened(file);
-    } catch (error) { this.toast(`Could not open file: ${this.errorText(error)}`); }
+      const result = await pickFiles();
+      const failures = [...result.failures];
+      for (const file of result.files) {
+        try { await this.addOpened(file); }
+        catch (error) { failures.push({ name: file.name, message: this.errorText(error) }); }
+      }
+      this.reportOpenFailures(failures);
+    } catch (error) { this.toast(`Could not open file picker: ${this.errorText(error)}`); }
+  }
+
+  private reportOpenFailures(failures: OpenFailure[]): void {
+    if (!failures.length) return;
+    const dialog = $<HTMLDialogElement>('#open-errors-dialog');
+    const list = $('#open-errors-list');
+    if (!dialog.open) list.replaceChildren();
+    $('#open-errors-summary').textContent = 'Files that could be opened are available in tabs. The files below were not opened or changed.';
+    for (const failure of failures) {
+      const item = el('li');
+      const name = el('strong'); name.textContent = failure.name;
+      const reason = el('span'); reason.textContent = failure.message;
+      item.append(name, reason); list.append(item);
+    }
+    if (!dialog.open) {
+      dialog.showModal();
+      $<HTMLButtonElement>('#open-errors-dialog .modal-actions button').focus();
+    }
   }
 
   private async addOpened(file: OpenedFile): Promise<void> {
@@ -263,18 +305,16 @@ class MorrowApp {
       const same = this.docs.find((doc) => doc.ref?.kind === 'native' && doc.ref.path.toLowerCase() === (file.ref as { kind: 'native'; path: string }).path.toLowerCase());
       if (same) { this.switchDoc(same.id); return; }
     }
-    try {
-      const decoded = decodeFile(file.bytes);
-      const hash = await sha256(file.bytes);
-      const doc = this.makeDoc(file.name, decoded.text, { ref: file.ref, encoding: decoded.encoding, lineEnding: decoded.lineEnding, mixed: decoded.mixedLineEndings, hash });
-      // Replace an unused empty untitled buffer, without throwing away anything typed.
-      const empty = this.docs.find((item) => !item.ref && !item.sample && !this.dirty(item) && item.state.doc.length === 0);
-      this.docs.push(doc);
-      // Switch while the old document still exists: update listeners must never target a different tab.
-      this.switchDoc(doc.id);
-      if (empty) { this.docs.splice(this.docs.indexOf(empty), 1); this.renderAll(); this.scheduleRecovery(); }
-      if (decoded.mixedLineEndings) this.toast(`Mixed line endings detected in ${file.name}. Saving will normalize them to ${decoded.lineEnding}.`);
-    } catch (error) { this.toast(`Could not open ${file.name}: ${this.errorText(error)}`); }
+    const decoded = decodeFile(file.bytes);
+    const hash = await sha256(file.bytes);
+    const doc = this.makeDoc(file.name, decoded.text, { ref: file.ref, encoding: decoded.encoding, lineEnding: decoded.lineEnding, mixed: decoded.mixedLineEndings, hash });
+    // Replace an unused empty untitled buffer, without throwing away anything typed.
+    const empty = this.docs.find((item) => !item.ref && !item.sample && !this.dirty(item) && item.state.doc.length === 0);
+    this.docs.push(doc);
+    // Switch while the old document still exists: update listeners must never target a different tab.
+    this.switchDoc(doc.id);
+    if (empty) { this.docs.splice(this.docs.indexOf(empty), 1); this.renderAll(); this.scheduleRecovery(); }
+    if (decoded.mixedLineEndings) this.toast(`Mixed line endings detected in ${file.name}. Saving will normalize them to ${decoded.lineEnding}.`);
   }
 
   private async saveDoc(doc: Doc, saveAs = false): Promise<boolean> {
@@ -432,13 +472,38 @@ class MorrowApp {
 
   private renderRecoveryStatus(): void {
     const status = $('#recovery-status');
-    status.innerHTML = `<span class="status-dot"></span> <span>${this.recoveryFailed && this.settings.recovery ? 'Recovery unavailable — save your work' : this.settings.recovery ? 'Local session recovery on' : 'Session recovery off'}</span>`;
-    status.title = this.settings.recovery ? 'Recovery copies are stored locally, unencrypted. They are not backups.' : 'Open Settings to enable local session recovery.';
+    const label = this.settingsReadFailed ? 'Recovery paused — settings unavailable'
+      : this.recoveryBlocked ? 'Recovery paused — save your work'
+      : this.recoveryCleanupFailed && !this.settings.recovery ? 'Recovery off — old copy not removed'
+      : this.recoveryFailed && this.settings.recovery ? 'Recovery unavailable — save your work'
+      : this.settings.recovery ? 'Local session recovery on' : 'Session recovery off';
+    status.innerHTML = '<span class="status-dot"></span> <span></span>';
+    status.lastElementChild!.textContent = label;
+    status.title = this.settings.recovery ? 'Recovery copies are stored locally, unencrypted. They are not backups.' : 'Save important work to files. Recovery copies are not backups.';
+  }
+
+  private renderStorageWarning(): void {
+    const messages: string[] = [];
+    if (this.settingsReadFailed) messages.push('Settings could not be read. AI is off and recovery is paused; any existing recovery copy is untouched. Save your files and restart after fixing storage.');
+    else if (this.settingsSaveFailed) messages.push('Settings could not be saved. Changes, including recovery preferences, may revert after restarting. AI always starts off.');
+    if (this.recoveryBlocked) messages.push('The previous recovery session could not be read. Its stored copy has not been overwritten. Save your current work and restart after fixing storage.');
+    else if (this.recoveryFailed && this.settings.recovery) messages.push('A recovery copy could not be saved. Save your work to a file.');
+    if (this.recoveryCleanupFailed && !this.settings.recovery) messages.push('Recovery is off, but an old recovery copy could not be removed and may still contain text.');
+    const warning = $('#storage-warning');
+    $('#storage-warning-text').textContent = messages.join(' ');
+    warning.hidden = messages.length === 0;
+    const inSettings = $('#settings-storage-message');
+    inSettings.textContent = messages.join(' ');
+    inSettings.hidden = messages.length === 0;
+    $<HTMLButtonElement>('#setting-recovery').disabled = this.settingsReadFailed || this.recoveryOperationBusy || (!this.settings.recovery && this.recoveryCleanupFailed);
+    const retry = $<HTMLButtonElement>('#retry-recovery-cleanup');
+    retry.hidden = !this.recoveryCleanupFailed || this.settings.recovery || this.settingsReadFailed;
+    retry.disabled = this.recoveryOperationBusy;
   }
 
   private renderAll(): void {
     if (!this.view) return;
-    this.renderFiles(); this.updateStatus(); this.renderRecoveryStatus(); this.renderAiStatus();
+    this.renderFiles(); this.updateStatus(); this.renderRecoveryStatus(); this.renderStorageWarning(); this.renderAiStatus();
   }
 
   private applyEditorPreferences(): void {
@@ -457,6 +522,7 @@ class MorrowApp {
     $('#wrap-button').setAttribute('aria-pressed', String(this.settings.wrap));
     $('#setting-wrap').setAttribute('aria-checked', String(this.settings.wrap));
     $('#setting-recovery').setAttribute('aria-checked', String(this.settings.recovery));
+    $<HTMLButtonElement>('#setting-recovery').disabled = this.settingsReadFailed || this.recoveryOperationBusy || (!this.settings.recovery && this.recoveryCleanupFailed);
     $<HTMLSelectElement>('#setting-theme').value = this.settings.theme;
     $<HTMLSelectElement>('#setting-font').value = String(this.settings.fontSize);
     $<HTMLSelectElement>('#tab-size').value = String(this.settings.tabSize);
@@ -464,10 +530,16 @@ class MorrowApp {
     $('#ai-toggle').setAttribute('aria-checked', String(this.settings.aiEnabled));
     this.applyEditorPreferences();
     this.renderRecoveryStatus();
-    saveSettings(this.settings);
+    this.renderStorageWarning();
   }
 
-  private persistSettings(): void { this.applySettings(); this.updateStatus(); this.scheduleRecovery(); }
+  private persistSettings(): boolean {
+    // Do not replace unreadable settings with defaults; doing so could also erase the user's recovery preference.
+    const saved = !this.settingsReadFailed && saveSettings(this.settings);
+    this.settingsSaveFailed = !saved && !this.settingsReadFailed;
+    this.applySettings(); this.updateStatus(); this.scheduleRecovery();
+    return saved;
+  }
   private toggleSidebar(): void { this.settings.sidebar = !this.settings.sidebar; this.persistSettings(); }
   private toggleWrap(): void { this.settings.wrap = !this.settings.wrap; this.persistSettings(); this.toast(`Word wrap ${this.settings.wrap ? 'on' : 'off'}.`); }
   private toggleTheme(): void { this.settings.theme = this.settings.theme === 'dark' ? 'light' : 'dark'; this.persistSettings(); }
@@ -521,7 +593,7 @@ class MorrowApp {
       case 'settings': this.showDialog('settings-dialog'); break;
       case 'shortcuts': this.showDialog('help-dialog'); break;
       case 'ai': this.toggleAiPanel(); break;
-      case 'about': await this.confirm('A little space for big ideas.', `Morrow 0.1.0 is an open-source text and code editor. Your files stay yours. This is an early preview; save important work regularly.`, [{ id: 'ok', label: 'Sounds good', style: 'primary' }], 'ABOUT MORROW'); break;
+      case 'about': await this.confirm('A little space for big ideas.', `Morrow 0.1.1 is an open-source text and code editor. Your files stay yours. This is an early preview; save important work regularly.`, [{ id: 'ok', label: 'Sounds good', style: 'primary' }], 'ABOUT MORROW'); break;
     }
   }
 
@@ -570,7 +642,7 @@ class MorrowApp {
   }
   private renderAiStatus(message?: string, error = false): void {
     const status = $('#ai-status');
-    const label = message || (!desktop ? 'Desktop app only in this preview' : this.settings.aiEnabled ? 'On · using local Ollama' : 'Off by default');
+    const label = message || (!desktop ? 'Desktop app only in this preview' : this.settings.aiEnabled ? 'On · using Ollama' : 'Off · enable for this session');
     status.classList.toggle('on', this.settings.aiEnabled && !error);
     status.classList.toggle('error', error);
     status.innerHTML = '<span class="status-dot"></span><span></span>';
@@ -583,7 +655,7 @@ class MorrowApp {
     if (this.settings.aiEnabled) {
       this.settings.aiEnabled = false; this.cancelAi(); clearGhost(this.view); this.persistSettings(); this.renderAiStatus(); return;
     }
-    const choice = await this.confirm('Turn on AI suggestions?', 'As you type, up to 3,500 characters before and 1,200 after your cursor are sent to Ollama at 127.0.0.1 on this computer. Ollama and the model determine whether any data is forwarded elsewhere. Use a local model for offline use.', [
+    const choice = await this.confirm('Turn on AI suggestions?', 'As you type, up to 3,500 characters before and 1,200 after your cursor are sent to Ollama at 127.0.0.1 on this computer. Ollama and the model determine whether data is forwarded elsewhere. Suggestions turn off when Morrow restarts. Use a local model for offline use.', [
       { id: 'cancel', label: 'Not now' }, { id: 'enable', label: 'Enable suggestions', style: 'primary' },
     ], 'YOUR CHOICE');
     if (choice !== 'enable') return;
@@ -625,7 +697,7 @@ class MorrowApp {
     const signal = controller.signal;
     let timedOut = false;
     const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 30_000);
-    this.renderAiStatus('Thinking locally…');
+    this.renderAiStatus('Thinking via Ollama…');
     try {
       const suggestion = await complete(prefix + suffix, prefix.length, this.settings.model, signal);
       if (signal.aborted || generation !== this.aiGeneration || this.activeId !== doc.id || doc.revision !== revision || this.view.state.selection.main.head !== pos) return;
@@ -680,6 +752,7 @@ class MorrowApp {
     $('#setting-font').addEventListener('change', (event) => { this.settings.fontSize = Number((event.target as HTMLSelectElement).value); this.persistSettings(); });
     $('#setting-wrap').addEventListener('click', () => this.toggleWrap());
     $('#setting-recovery').addEventListener('click', () => { void this.toggleRecovery(); });
+    $('#retry-recovery-cleanup').addEventListener('click', () => { void this.retryRecoveryCleanup(); });
     $('#ai-toggle').addEventListener('click', () => { void this.toggleAi(); });
     $('#test-ai').addEventListener('click', () => { void this.checkAi(); });
     $('#model-name').addEventListener('change', (event) => {
@@ -698,24 +771,69 @@ class MorrowApp {
       const keyboard = event as KeyboardEvent;
       if (keyboard.key === 'Enter') { keyboard.preventDefault(); keyboard.shiftKey ? findPrevious(this.view) : findNext(this.view); }
     });
-    window.addEventListener('beforeunload', (event) => { if (!this.settings.recovery && this.docs.some((doc) => this.dirty(doc))) { event.preventDefault(); event.returnValue = ''; } });
+    window.addEventListener('beforeunload', (event) => {
+      // Desktop close has its own per-document confirmation; avoid a second WebView prompt.
+      if (!desktop && (!this.settings.recovery || this.recoveryBlocked || this.recoveryFailed) && this.docs.some((doc) => this.dirty(doc))) { event.preventDefault(); event.returnValue = ''; }
+    });
+  }
+
+  private async removeRecoveryCopy(): Promise<boolean> {
+    try {
+      await saveSession(null);
+      this.recoveryCleanupFailed = false;
+      this.recoveryBlocked = false;
+      this.recoveryFailed = false;
+      return true;
+    } catch {
+      this.recoveryCleanupFailed = true;
+      return false;
+    } finally { this.renderRecoveryStatus(); this.renderStorageWarning(); }
+  }
+
+  private async retryRecoveryCleanup(): Promise<void> {
+    if (this.recoveryOperationBusy || this.settings.recovery || this.settingsReadFailed || !this.recoveryCleanupFailed) return;
+    this.recoveryOperationBusy = true;
+    this.renderStorageWarning();
+    try {
+      if (await this.removeRecoveryCopy()) {
+        this.toast(this.settingsSaveFailed ? 'The recovery copy was removed, but the off setting may not persist.' : 'The old recovery copy was removed.');
+      } else this.toast('Could not remove the old recovery copy. It may still contain text.');
+    } finally { this.recoveryOperationBusy = false; this.renderStorageWarning(); }
   }
 
   private async toggleRecovery(): Promise<void> {
-    this.settings.recovery = !this.settings.recovery;
-    if (!this.settings.recovery) {
-      window.clearTimeout(this.recoveryTimer); this.applySettings();
-      try { await saveSession(null); this.recoveryFailed = false; this.toast('Local recovery is off and the saved session was removed.'); }
-      catch { this.recoveryFailed = true; this.toast('Could not remove the old recovery copy. Check local application storage.'); }
-    } else { this.persistSettings(); await this.flushRecovery(); }
-    this.renderRecoveryStatus();
+    if (this.recoveryOperationBusy || this.settingsReadFailed || (!this.settings.recovery && this.recoveryCleanupFailed)) return;
+    this.recoveryOperationBusy = true;
+    this.renderStorageWarning();
+    try {
+      if (this.settings.recovery && this.recoveryBlocked) {
+        const choice = await this.confirm('Remove the old recovery copy?', 'Morrow could not read the previous recovery session. Turning recovery off will try to delete that copy, which may contain unsaved work. Save your current files first.', [
+          { id: 'cancel', label: 'Cancel' }, { id: 'remove', label: 'Turn off and remove', style: 'danger' },
+        ], 'RECOVERY NEEDS ATTENTION');
+        if (choice !== 'remove') return;
+      }
+      this.settings.recovery = !this.settings.recovery;
+      if (!this.settings.recovery) window.clearTimeout(this.recoveryTimer);
+      const persisted = this.persistSettings();
+      if (!this.settings.recovery) {
+        if (await this.removeRecoveryCopy()) {
+          this.toast(persisted ? 'Local recovery is off and the saved session was removed.' : 'Recovery is off for this session, but the off setting may not persist.');
+        } else this.toast('Could not remove the old recovery copy. It may still contain text.');
+      } else {
+        const saved = await this.flushRecovery();
+        if (saved && !persisted) this.toast('Recovery is on for this session, but the setting could not be saved.');
+      }
+    } finally {
+      this.recoveryOperationBusy = false;
+      this.applySettings();
+    }
   }
 
   private onKey(event: KeyboardEvent): void {
     const mod = event.ctrlKey || event.metaKey;
     const key = event.key.toLowerCase();
     if (event.key === 'Escape') {
-      if ($<HTMLDialogElement>('#confirm-dialog').open || $<HTMLDialogElement>('#settings-dialog').open || $<HTMLDialogElement>('#help-dialog').open) return;
+      if (document.querySelector('dialog[open]')) return;
       if (this.findOpen) { event.preventDefault(); this.closeFind(); return; }
       if (this.view && hasGhost(this.view)) { event.preventDefault(); clearGhost(this.view); this.renderAiStatus(); return; }
       this.closeMenus(); return;
@@ -743,10 +861,14 @@ class MorrowApp {
       if (!event.dataTransfer?.files.length) return;
       event.preventDefault(); overlay.hidden = true;
       void (async () => {
+        const failures: OpenFailure[] = [];
         for (const file of Array.from(event.dataTransfer!.files)) {
-          if (file.size > 20 * 1024 * 1024) { this.toast(`${file.name} is larger than the 20 MiB limit.`); continue; }
-          await this.addOpened({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()), ref: { kind: 'download' } });
+          try {
+            if (file.size > 20 * 1024 * 1024) throw new Error('This file is larger than the 20 MiB safety limit.');
+            await this.addOpened({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()), ref: { kind: 'download' } });
+          } catch (error) { failures.push({ name: file.name, message: this.errorText(error) }); }
         }
+        this.reportOpenFailures(failures);
       })();
     });
   }
@@ -756,6 +878,7 @@ class MorrowApp {
     await window.onCloseRequested(async (event) => {
       event.preventDefault(); // Must happen synchronously, before the first await.
       if (this.closing) return;
+      if (this.recoveryOperationBusy) { this.toast('Please wait for the recovery setting to finish updating.'); return; }
       this.closing = true;
       try {
         if (this.settings.recovery && await this.flushRecovery()) { await window.destroy(); return; }
@@ -780,10 +903,12 @@ class MorrowApp {
     catch (error) { this.toast(`Could not open launch files: ${this.errorText(error)}`); }
   }
   private async openNativePaths(paths: string[]): Promise<void> {
+    const failures: OpenFailure[] = [];
     for (const path of paths) {
       try { await this.addOpened(await readNative(path)); }
-      catch (error) { this.toast(`Could not open ${path}: ${this.errorText(error)}`); }
+      catch (error) { failures.push({ name: path, message: this.errorText(error) }); }
     }
+    this.reportOpenFailures(failures);
   }
 }
 
