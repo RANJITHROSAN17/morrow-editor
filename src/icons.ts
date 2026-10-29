@@ -1,0 +1,32 @@
+const paths: Record<string, string> = {
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  folder: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l1.8 2H19.5A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z"/>',
+  file: '<path d="M6 3.5h8l4 4v13H6z"/><path d="M14 3.5v4h4"/>',
+  search: '<circle cx="10.8" cy="10.8" r="6.3"/><path d="m15.5 15.5 4.4 4.4"/>',
+  settings: '<path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="M19.3 13.5a7.9 7.9 0 0 0 0-3l1.5-1.2-1.5-2.6-1.8.6a7.5 7.5 0 0 0-2.6-1.5L14.5 4h-3l-.4 1.8A7.5 7.5 0 0 0 8.5 7.3l-1.8-.6-1.5 2.6 1.5 1.2a7.9 7.9 0 0 0 0 3l-1.5 1.2 1.5 2.6 1.8-.6a7.5 7.5 0 0 0 2.6 1.5l.4 1.8h3l.4-1.8a7.5 7.5 0 0 0 2.6-1.5l1.8.6 1.5-2.6z"/>',
+  sparkle: '<path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
+  lock: '<rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v2"/>',
+  chevron: '<path d="m9 18 6-6-6-6"/>',
+  down: '<path d="m7 10 5 5 5-5"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>',
+  panel: '<rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M9 4v16"/>',
+  wrap: '<path d="M4 7h16M4 11h12a3 3 0 0 1 0 6H12M14 15l-2 2 2 2M4 15h4"/>',
+  save: '<path d="M5 3.5h12l2.5 2.5V20H4.5V4z"/><path d="M8 3.5v5h8v-5M8 20v-7h8v7"/>',
+  undo: '<path d="M9 8 5 12l4 4M5 12h9a5 5 0 0 1 5 5"/>',
+  redo: '<path d="m15 8 4 4-4 4M19 12h-9a5 5 0 0 0-5 5"/>',
+  check: '<path d="m5 12 4 4L19 6"/>',
+  info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/>',
+  keyboard: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M6 9h.01M9 9h.01M12 9h.01M15 9h.01M18 9h.01M6 12h.01M9 12h.01M12 12h.01M15 12h.01M18 12h.01M8 15h8"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M20 15.1A8 8 0 0 1 8.9 4 8.5 8.5 0 1 0 20 15.1Z"/>',
+  arrowup: '<path d="m6 14 6-6 6 6"/>',
+  arrowdown: '<path d="m6 10 6 6 6-6"/>',
+  refresh: '<path d="M20 12a8 8 0 0 1-13.6 5.7L4 15M4 20v-5h5M4 12A8 8 0 0 1 17.6 6.3L20 9M20 4v5h-5"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  external: '<path d="M13 5h6v6M19 5l-9 9M18 13v5H6V6h5"/>',
+  document: '<path d="M6 3.5h8l4 4v13H6zM14 3.5v4h4M9 12h6M9 15h6"/>',
+  sliders: '<path d="M4 7h10M18 7h2M4 17h2m4 0h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
+};
+export function icon(name: string, size = 16): string {
+  return `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">${paths[name] || paths.info}</svg>`;
+}

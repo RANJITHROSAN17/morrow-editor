@@ -1,0 +1,37 @@
+{
+  "name": "morrow-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A small, local-first text and code editor for Windows.",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.20.0",
+    "@codemirror/commands": "^6.10.0",
+    "@codemirror/language": "^6.11.0",
+    "@codemirror/language-data": "^6.5.0",
+    "@codemirror/search": "^6.5.0",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.40.0",
+    "@lezer/highlight": "^1.2.1",
+    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-dialog": "^2.4.0",
+    "@tauri-apps/plugin-fs": "^2.4.0",
+    "@tauri-apps/plugin-http": "^2.5.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@tauri-apps/cli": "^2.8.0",
+    "@types/node": "^20.19.43",
+    "typescript": "~5.9.3",
+    "vite": "^6.4.5",
+    "vitest": "^3.2.7"
+  }
+}

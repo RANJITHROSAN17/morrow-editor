@@ -1,0 +1,51 @@
+name: Windows x64 preview
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+      - name: Install dependencies
+        run: npm ci
+      - name: Frontend build and unit tests
+        run: |
+          npm run build
+          npm test
+      - name: Rust file-safety tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked
+      - name: Build unsigned Windows installer
+        run: npm run tauri build -- --target x86_64-pc-windows-msvc
+      - name: Write installer checksums
+        shell: pwsh
+        run: |
+          $dir = 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis'
+          Get-ChildItem $dir -Filter '*-setup.exe' | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)" | Out-File -Append -Encoding utf8 "$dir/SHA256SUMS.txt"
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Morrow-windows-x64-unsigned
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/SHA256SUMS.txt
+          if-no-files-found: error

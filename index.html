@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#161f1e" />
+  <title>Morrow — text, without the noise</title>
+</head>
+<body>
+<div id="app" class="app">
+  <header class="topbar">
+    <div class="brand" aria-label="Morrow editor">
+      <div class="brand-mark"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 16V8.2c0-2.3 2.8-3.4 4.4-1.8L12 10l3.6-3.6c1.6-1.6 4.4-.5 4.4 1.8V16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="m8 16 4-4 4 4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <span class="brand-name">morrow<span class="brand-dot">.</span></span>
+      <span class="brand-edition">EDITOR</span>
+    </div>
+    <nav class="menubar" aria-label="Application menu">
+      <div class="menu-wrap"><button class="menu-trigger" data-menu="file" aria-haspopup="menu" aria-expanded="false">File</button><div class="menu" data-menu-panel="file" role="menu" hidden>
+        <button data-action="new" role="menuitem">New file <kbd>Ctrl N</kbd></button><button data-action="open" role="menuitem">Open files… <kbd>Ctrl O</kbd></button><span class="menu-divider"></span><button data-action="save" role="menuitem">Save <kbd>Ctrl S</kbd></button><button data-action="save-as" role="menuitem">Save as… <kbd>Ctrl Shift S</kbd></button><span class="menu-divider"></span><button data-action="close" role="menuitem">Close tab <kbd>Ctrl W</kbd></button>
+      </div></div>
+      <div class="menu-wrap"><button class="menu-trigger" data-menu="edit" aria-haspopup="menu" aria-expanded="false">Edit</button><div class="menu" data-menu-panel="edit" role="menu" hidden>
+        <button data-action="undo" role="menuitem">Undo <kbd>Ctrl Z</kbd></button><button data-action="redo" role="menuitem">Redo <kbd>Ctrl Y</kbd></button><span class="menu-divider"></span><button data-action="find" role="menuitem">Find <kbd>Ctrl F</kbd></button><button data-action="replace" role="menuitem">Replace <kbd>Ctrl H</kbd></button><button data-action="select-all" role="menuitem">Select all <kbd>Ctrl A</kbd></button>
+      </div></div>
+      <div class="menu-wrap"><button class="menu-trigger" data-menu="view" aria-haspopup="menu" aria-expanded="false">View</button><div class="menu" data-menu-panel="view" role="menu" hidden>
+        <button data-action="sidebar" role="menuitem">Toggle sidebar <kbd>Ctrl B</kbd></button><button data-action="wrap" role="menuitem">Toggle word wrap <kbd>Alt Z</kbd></button><button data-action="theme" role="menuitem">Switch theme</button><span class="menu-divider"></span><button data-action="settings" role="menuitem">Settings <kbd>Ctrl ,</kbd></button>
+      </div></div>
+      <div class="menu-wrap"><button class="menu-trigger" data-menu="help" aria-haspopup="menu" aria-expanded="false">Help</button><div class="menu" data-menu-panel="help" role="menu" hidden>
+        <button data-action="shortcuts" role="menuitem">Keyboard shortcuts</button><button data-action="about" role="menuitem">About Morrow</button>
+      </div></div>
+    </nav>
+    <div class="top-actions">
+      <button class="icon-button top-search" data-action="find" title="Find in file (Ctrl+F)" aria-label="Find in file" data-icon="search"></button>
+      <span class="top-separator"></span>
+      <button class="ai-top-button" data-action="ai" aria-label="AI suggestions settings"><span data-icon="sparkle"></span><span>AI suggestions</span><span class="ai-state" id="ai-top-state">OFF</span></button>
+      <button class="icon-button" data-action="settings" title="Settings (Ctrl+,)" aria-label="Settings" data-icon="settings"></button>
+    </div>
+  </header>
+  <div class="body-layout">
+    <aside class="sidebar" id="sidebar" aria-label="Workspace">
+      <div class="sidebar-heading"><span>YOUR WORKSPACE</span><button class="icon-button small" data-action="sidebar" title="Hide sidebar (Ctrl+B)" aria-label="Hide sidebar" data-icon="panel"></button></div>
+      <button class="new-primary" data-action="new"><span data-icon="plus"></span> New file <span class="shortcut">Ctrl N</span></button>
+      <button class="sidebar-open" data-action="open"><span data-icon="folder"></span> Open a file <span class="shortcut">Ctrl O</span></button>
+      <div class="sidebar-section-label"><span>OPEN FILES</span><span class="file-count" id="file-count">0</span><button class="icon-button tiny" data-action="new" title="New file" aria-label="New file" data-icon="plus"></button></div>
+      <div class="file-list" id="file-list" role="list"></div>
+      <div class="sidebar-spacer"></div>
+      <button class="ai-card" data-action="ai">
+        <span class="ai-card-icon" data-icon="sparkle"></span>
+        <span class="ai-card-copy"><strong>A little help, if you want it.</strong><span>Local AI suggestions, on your terms.</span><span class="ai-card-link">Explore AI <span data-icon="chevron"></span></span></span>
+      </button>
+      <div class="privacy-foot"><span data-icon="lock"></span><span><strong>Made for your peace of mind</strong><small>Your files, your computer.</small></span></div>
+    </aside>
+    <main class="main" id="main">
+      <div class="tabs-row"><button class="icon-button show-sidebar" id="show-sidebar" data-action="sidebar" aria-label="Show sidebar" title="Show sidebar" data-icon="panel" hidden></button><div class="tabs" id="tabs" role="tablist" aria-label="Open files"></div><button class="icon-button tab-add" data-action="new" title="New file (Ctrl+N)" aria-label="New file" data-icon="plus"></button><div class="tabs-fill"></div><button class="icon-button tab-tool" data-action="save" title="Save (Ctrl+S)" aria-label="Save file" data-icon="save"></button></div>
+      <div class="document-toolbar">
+        <div class="breadcrumb"><span class="breadcrumb-root" id="breadcrumb-root">YOUR FILES</span><span class="crumb-sep" data-icon="chevron"></span><span class="breadcrumb-file" id="breadcrumb-file">Untitled</span><span class="toolbar-dirty" id="toolbar-dirty" hidden>Unsaved changes</span></div>
+        <div class="document-actions"><label class="language-label" title="Choose a syntax highlighting language"><span class="language-dot"></span><select id="language" aria-label="Syntax language"></select></label><button class="icon-button" data-action="wrap" id="wrap-button" title="Toggle word wrap (Alt+Z)" aria-label="Toggle word wrap" aria-pressed="false" data-icon="wrap"></button></div>
+      </div>
+      <div class="example-banner" id="example-banner"><span class="example-spark" data-icon="sparkle"></span><span><strong>A little something to explore.</strong> This is an example file, not saved on your computer.</span><button data-action="new">Start fresh <span data-icon="chevron"></span></button></div>
+      <div class="editor-shell" id="editor-shell">
+        <div id="editor" class="editor" aria-label="Text editor"></div>
+        <section class="find-panel" id="find-panel" aria-label="Find and replace" hidden>
+          <div class="find-row"><span data-icon="search"></span><input id="find-input" aria-label="Find text" placeholder="Find in this file" autocomplete="off" spellcheck="false"><span id="find-count" class="find-count">0</span><button id="find-case" class="find-option" title="Match case" aria-label="Match case" aria-pressed="false">Aa</button><button id="find-regex" class="find-option" title="Use regular expression" aria-label="Use regular expression" aria-pressed="false">.*</button><button class="icon-button tiny" id="find-prev" title="Previous match (Shift+Enter)" aria-label="Previous match" data-icon="arrowup"></button><button class="icon-button tiny" id="find-next" title="Next match (Enter)" aria-label="Next match" data-icon="arrowdown"></button><button class="icon-button tiny" id="find-close" title="Close find" aria-label="Close find" data-icon="close"></button></div>
+          <div class="find-row replace-row" id="replace-row" hidden><span class="replace-indicator">↳</span><input id="replace-input" aria-label="Replace with" placeholder="Replace with" autocomplete="off" spellcheck="false"><button class="text-button" id="replace-one">Replace</button><button class="text-button" id="replace-all">All</button></div><div id="find-error" class="find-error" hidden></div>
+        </section>
+        <div class="drop-overlay" id="drop-overlay" hidden><div><span data-icon="folder"></span><strong>Drop files to open</strong><span>Text and code files, up to 20 MiB each</span></div></div>
+      </div>
+      <aside class="assistant-panel" id="assistant-panel" aria-label="AI suggestions" hidden>
+        <div class="assistant-heading"><div><span class="eyebrow">YOUR WRITING PARTNER</span><h2>AI suggestions <span class="heading-spark" data-icon="sparkle"></span></h2></div><button class="icon-button" data-action="ai" aria-label="Close AI panel" data-icon="close"></button></div>
+        <p class="assistant-intro">A helpful nudge, right where you’re writing. Always optional.</p>
+        <div class="setting-box"><div><strong>Inline suggestions</strong><p>Suggest code as you type</p></div><button class="switch" id="ai-toggle" role="switch" aria-checked="false" aria-label="Enable AI suggestions"><span></span></button></div>
+        <div class="assistant-status" id="ai-status"><span class="status-dot"></span><span>Off by default</span></div>
+        <div class="assistant-divider"></div>
+        <div class="assistant-icon" data-icon="lock"></div><h3>Thoughtfully local.</h3><p>Your nearby text is sent to Ollama on this computer. Choose a local model to keep it on your device. No account or API key needed.</p>
+        <div class="assistant-steps"><div><span>01</span><p>Install and start <strong>Ollama</strong> on your PC.</p></div><div><span>02</span><p>Download a code model in your terminal:</p></div><code>ollama pull qwen2.5-coder:1.5b</code><div><span>03</span><p>Turn on suggestions above. Press <kbd>Tab</kbd> to accept, <kbd>Esc</kbd> to dismiss.</p></div></div>
+        <label class="model-label" for="model-name">MODEL NAME</label><input id="model-name" class="input" value="qwen2.5-coder:1.5b" spellcheck="false"><button id="test-ai" class="outline-button"><span data-icon="refresh"></span> Check connection</button>
+        <p class="model-note">Model download is separate (about 1 GB for the suggested model). Performance depends on your PC.</p>
+      </aside>
+    </main>
+  </div>
+  <footer class="statusbar"><div class="status-left"><span class="status-online" id="recovery-status"><span class="status-dot"></span> <span>Local session recovery on</span></span><span class="status-divider"></span><span id="runtime-status">PRIVATE BY DEFAULT</span></div><div class="status-right"><span id="word-count">0 words</span><span class="status-divider"></span><span id="position">Ln 1, Col 1</span><label><span class="sr-only">Indent size</span><select id="tab-size" aria-label="Indent size"><option value="2">Spaces: 2</option><option value="4">Spaces: 4</option><option value="8">Spaces: 8</option></select></label><label><span class="sr-only">Line endings</span><select id="line-ending" aria-label="Line endings"><option value="LF">LF</option><option value="CRLF">CRLF</option><option value="CR">CR</option></select></label><label><span class="sr-only">Encoding</span><select id="encoding" aria-label="Encoding"><option>UTF-8</option><option>UTF-8 BOM</option><option>UTF-16 LE</option><option>UTF-16 BE</option></select></label><span class="status-language" id="status-language">Plain text</span></div></footer>
+</div>
+<dialog id="settings-dialog" class="modal"><div class="modal-header"><div><span class="eyebrow">MAKE IT YOURS</span><h2>Settings</h2></div><button class="icon-button" data-close-dialog="settings-dialog" aria-label="Close settings" data-icon="close"></button></div><p class="modal-intro">A few little things to make Morrow feel like home.</p><div class="settings-list">
+  <div class="settings-row"><div><strong>Appearance</strong><small>Choose your editor’s color theme.</small></div><select id="setting-theme" class="input compact"><option value="dark">Dark</option><option value="light">Light</option></select></div>
+  <div class="settings-row"><div><strong>Word wrap</strong><small>Keep long lines within the editor.</small></div><button class="switch" id="setting-wrap" role="switch" aria-label="Word wrap" aria-checked="false"><span></span></button></div>
+  <div class="settings-row"><div><strong>Remember my session</strong><small>Store local, unencrypted recovery copies of open files and unsaved text.</small></div><button class="switch" id="setting-recovery" role="switch" aria-label="Remember my session" aria-checked="false"><span></span></button></div>
+  <div class="settings-row"><div><strong>Editor font size</strong><small>Make the words just right.</small></div><select id="setting-font" class="input compact"><option value="12">12 px</option><option value="13">13 px</option><option value="14">14 px</option><option value="15">15 px</option><option value="16">16 px</option><option value="18">18 px</option><option value="20">20 px</option><option value="22">22 px</option></select></div>
+</div><p class="modal-footnote"><span data-icon="lock"></span> Recovery copies are not backups. Save important files regularly.</p></dialog>
+<dialog id="help-dialog" class="modal"><div class="modal-header"><div><span class="eyebrow">THE LITTLE THINGS</span><h2>Keyboard shortcuts</h2></div><button class="icon-button" data-close-dialog="help-dialog" aria-label="Close shortcuts" data-icon="close"></button></div><div class="shortcut-grid"><span>New file</span><kbd>Ctrl N</kbd><span>Open file</span><kbd>Ctrl O</kbd><span>Save / Save as</span><kbd>Ctrl S / Ctrl Shift S</kbd><span>Close tab</span><kbd>Ctrl W</kbd><span>Find / Replace</span><kbd>Ctrl F / Ctrl H</kbd><span>Next / previous tab</span><kbd>Ctrl Tab / Ctrl Shift Tab</kbd><span>Toggle word wrap</span><kbd>Alt Z</kbd><span>Toggle sidebar</span><kbd>Ctrl B</kbd><span>AI suggestion</span><kbd>Ctrl Shift Space</kbd><span>Accept / dismiss AI</span><kbd>Tab / Esc</kbd></div></dialog>
+<dialog id="confirm-dialog" class="modal confirm-modal"><div class="modal-header"><div><span class="eyebrow" id="confirm-eyebrow">BEFORE YOU GO</span><h2 id="confirm-title">Save changes?</h2></div><button class="icon-button" id="confirm-x" aria-label="Cancel" data-icon="close"></button></div><p class="confirm-message" id="confirm-message"></p><div class="modal-actions" id="confirm-actions"></div></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
