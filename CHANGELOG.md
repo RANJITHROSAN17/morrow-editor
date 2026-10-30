@@ -10,6 +10,7 @@
 - Opening or dropping multiple files now preserves successful opens and reports each failure by filename. Files remain subject to the 20 MiB limit and supported text encodings.
 - Improved text contrast, keyboard focus indicators and suggestion readability in the dark and light themes.
 - Added regression tests for settings/AI consent, recovery, mixed file-opening failures and selected contrast pairs. The Windows build workflow is configured to run browser UI tests as well as unit and Rust tests.
+- Updated the development test runner to Vitest 4.1.12, removing the affected `tinypool` dependency and addressing reported Vitest/mocker advisories.
 
 ### Important limitations
 
