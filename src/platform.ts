@@ -8,7 +8,7 @@ export const desktop = isTauri();
 // The File System Access API is present in current Chromium/WebView2, but not all TS DOM versions.
 type BrowserPicker = { showOpenFilePicker?: (options?: { multiple?: boolean }) => Promise<FileSystemFileHandle[]>; showSaveFilePicker?: (options?: { suggestedName?: string }) => Promise<FileSystemFileHandle> };
 export type FileRef = { kind: 'native'; path: string } | { kind: 'browser'; handle: FileSystemFileHandle } | { kind: 'download' };
-export interface OpenedFile { name: string; bytes: Uint8Array; ref: FileRef; }
+export interface OpenedFile { name: string; bytes: Uint8Array; ref: FileRef; displayPath?: string; }
 export interface OpenFailure { name: string; message: string; }
 export interface OpenFilesResult { files: OpenedFile[]; failures: OpenFailure[]; }
 

@@ -11,7 +11,9 @@ The following license expressions and versions were read from the installed pack
 | [CodeMirror](https://github.com/codemirror), including `@codemirror/autocomplete`, `commands`, `language`, `language-data`, `search`, `state` and `view` | 6.20.4, 6.11.1, 6.13.1, 6.5.2, 6.7.2, 6.7.6, 6.43.15 respectively | MIT |
 | [`@lezer/highlight`](https://github.com/lezer-parser/highlight) | 1.2.5 | MIT |
 | [`@tauri-apps/api`](https://github.com/tauri-apps/tauri) | 2.12.4 | Apache-2.0 OR MIT |
-| [`@tauri-apps/plugin-dialog`, `plugin-fs`, `plugin-http`](https://github.com/tauri-apps/plugins-workspace) | 2.8.4, 2.7.1, 2.8.3 respectively | MIT OR Apache-2.0 |
+| [`@tauri-apps/plugin-dialog`, `plugin-fs`, `plugin-http`, `plugin-opener`](https://github.com/tauri-apps/plugins-workspace) | 2.8.4, 2.7.1, 2.8.3, 2.7.2 respectively | MIT OR Apache-2.0 |
+| [`diff`](https://github.com/kpdecker/jsdiff) | 9.0.0 | BSD-3-Clause |
+| [`markdown-it`](https://github.com/markdown-it/markdown-it) | 14.3.3 | MIT |
 
 Development/build-only packages (including TypeScript, Vite, Vitest, Playwright and the Tauri CLI) and transitive language parsers also have separate licenses. Refer to `package-lock.json` and the installed packages for their exact versions and terms.
 
@@ -21,7 +23,8 @@ Development/build-only packages (including TypeScript, Vite, Vitest, Playwright 
 |---|---:|---|
 | [`tauri`](https://github.com/tauri-apps/tauri) | 2.12.5 | Apache-2.0 OR MIT |
 | `tauri-build` | 2.7.4 | Apache-2.0 OR MIT |
-| [`tauri-plugin-dialog`, `tauri-plugin-fs`, `tauri-plugin-http`](https://github.com/tauri-apps/plugins-workspace) | 2.8.4, 2.7.1, 2.8.3 respectively | Apache-2.0 OR MIT |
+| [`tauri-plugin-dialog`, `tauri-plugin-fs`, `tauri-plugin-http`, `tauri-plugin-opener`](https://github.com/tauri-apps/plugins-workspace) | 2.8.4, 2.7.1, 2.8.3, 2.7.2 respectively | Apache-2.0 OR MIT |
+| [`libc`](https://github.com/rust-lang/libc) (Unix only) | 0.2.191 | MIT OR Apache-2.0 |
 | `tauri-plugin-persisted-scope`, `tauri-plugin-single-instance` | 2.4.2, 2.5.5 respectively | Apache-2.0 OR MIT |
 | [`serde_json`](https://github.com/serde-rs/json) | 1.0.154 | MIT OR Apache-2.0 |
 | [`sha2`](https://github.com/RustCrypto/hashes) | 0.10.9 | MIT OR Apache-2.0 |

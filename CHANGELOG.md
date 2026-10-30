@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0 — 2026-10-30
+
+### Folder, navigation and reviewed changes
+
+- Open one explicitly selected folder, browse it lazily, and search its **saved files** with literal text and optional case/extension/name filters. Traversal, file sizes and results are bounded; generated folders, unsupported items and errors are disclosed. See the README for exact limits and exclusions.
+- Add quick open (`Ctrl+P`), go to line (`Ctrl+G`), a command palette (`Ctrl+Shift+P`) and an optional, default-off recent native paths list with a clear control and storage-failure warnings.
+- Compare a pasted replacement with one selected editor range before accepting it. Changes apply to the editor only, as one isolated undo step. Stale targets are rejected and Markdown is not silently stripped.
+- Offer a normal-browser Arena workflow with manual copy/paste, plus an optional Arena API panel requiring an eligible key and explicit confirmation for every request. Keys are not persisted by Morrow. A Linux synthetic invalid-key request returned HTTP 401; authenticated success remains unverified. API access, model availability, billing and privacy depend on the user's account.
+- Add an opt-in, locally rendered Markdown preview that follows unsaved edits. It uses an isolated worker and bounded inert DOM nodes; links and images are disabled and raw HTML is text. Limits and Windows verification caveats are in the README.
+- Warn locally about a few potential credential patterns before an Arena API send. This is a limited, fallible heuristic, not a guarantee or a redaction tool. Clarify that Ollama's loopback API can route cloud models.
+- Bound native folder enumeration and reads before IPC, skip detected links/reparse points, and restrict the HTTP plugin's redirect scope. Parent-directory and filesystem races remain; closing a folder view does not revoke persisted Tauri access.
+- Add automated tests for search, navigation, review safety and undo, Arena request validation with a mock transport, and recent-path privacy. These do not replace hands-on Windows, live-provider, security or accessibility testing.
+
 ## 0.1.1 — 2026-10-30
 
 ### Trust and usability

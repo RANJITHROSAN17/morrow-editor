@@ -1,6 +1,6 @@
 {
   "name": "morrow-editor",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "A small, local-first text and code editor for Windows.",
@@ -24,11 +24,15 @@
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "@tauri-apps/plugin-fs": "^2.4.0",
-    "@tauri-apps/plugin-http": "^2.5.0"
+    "@tauri-apps/plugin-http": "^2.5.0",
+    "@tauri-apps/plugin-opener": "^2.7.2",
+    "diff": "^9.0.0",
+    "markdown-it": "^14.3.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
     "@tauri-apps/cli": "^2.8.0",
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^20.19.43",
     "typescript": "~5.9.3",
     "vite": "^6.4.5",

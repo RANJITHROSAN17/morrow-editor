@@ -28,7 +28,7 @@ export function firstSuggestion(value: unknown): string {
 
 export async function listModels(signal?: AbortSignal): Promise<string[]> {
   if (!desktop) throw new Error('AI is available in the Windows desktop app, not this browser preview.');
-  const response = await nativeFetch(`${ENDPOINT}/api/tags`, { method: 'GET', signal });
+  const response = await nativeFetch(`${ENDPOINT}/api/tags`, { method: 'GET', signal, maxRedirections: 0 });
   if (!response.ok) throw new Error(`Ollama responded with HTTP ${response.status}.`);
   const body = await response.json() as { models?: { name?: string }[] };
   return (body.models || []).map((item) => item.name).filter((name): name is string => !!name);
@@ -41,6 +41,7 @@ export async function complete(text: string, cursor: number, model: string, sign
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(buildCompletionRequest(text, cursor, model)),
     signal,
+    maxRedirections: 0,
   });
   if (!response.ok) {
     let detail = '';

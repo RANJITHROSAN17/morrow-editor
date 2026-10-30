@@ -41,6 +41,23 @@ describe('settings persistence and session-only AI consent', () => {
     expect(loadSettings().settings).toMatchObject({ aiEnabled: false, recovery: true });
   });
 
+  it('keeps recent paths opt-in, limited and removable', () => {
+    expect(loadSettings().settings).toMatchObject({ rememberRecent: false, recentFiles: [] });
+    const paths = Array.from({ length: 25 }, (_, i) => `C:\\notes\\${i}.txt`);
+    expect(saveSettings({ ...defaults, rememberRecent: true, recentFiles: paths })).toBe(true);
+    expect(loadSettings().settings.recentFiles).toEqual(paths.slice(0, 20));
+    expect(saveSettings({ ...defaults, rememberRecent: false, recentFiles: paths })).toBe(true);
+    expect(loadSettings().settings).toMatchObject({ rememberRecent: false, recentFiles: [] });
+    expect(JSON.parse(localStorage.getItem(SETTINGS_KEY)!).recentFiles).toEqual([]);
+  });
+
+  it('sanitizes malformed recent-path values without enabling the feature by accident', () => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ rememberRecent: false, recentFiles: ['C:\\secret.txt'] }));
+    expect(loadSettings().settings.recentFiles).toEqual([]);
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ rememberRecent: true, recentFiles: ['', 5, 'a', 'a', 'x'.repeat(4097)] }));
+    expect(loadSettings().settings.recentFiles).toEqual(['a']);
+  });
+
   it('pauses recovery and leaves persistence to the caller if settings cannot be read', () => {
     vi.stubGlobal('localStorage', { getItem: () => { throw new DOMException('Blocked', 'SecurityError'); } });
     expect(loadSettings()).toMatchObject({ readFailed: true, settings: { recovery: false, aiEnabled: false } });

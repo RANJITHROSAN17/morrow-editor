@@ -2,7 +2,7 @@ import './style.css';
 import { EditorState, Text } from '@codemirror/state';
 import { EditorView, type ViewUpdate } from '@codemirror/view';
 import { indentUnit } from '@codemirror/language';
-import { redo, selectAll, undo } from '@codemirror/commands';
+import { isolateHistory, redo, selectAll, undo } from '@codemirror/commands';
 import { closeSearchPanel, findNext, findPrevious, openSearchPanel, replaceAll, replaceNext, SearchQuery, setSearchQuery } from '@codemirror/search';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -15,6 +15,10 @@ import { complete, listModels, DEFAULT_MODEL } from './ai';
 import { loadSession, loadSettings, saveSession, saveSettings, type SavedDocument, type Session, type Settings } from './storage';
 import { MARKDOWN_SAMPLE, PYTHON_SAMPLE } from './samples';
 import { icon } from './icons';
+import { makeReviewTarget, reviewTargetIsCurrent, type ReviewTarget } from './change-review';
+import { readWorkspaceFile, type WorkspaceFile } from './workspace';
+import { Workbench } from './workbench';
+import { MarkdownPreview } from './markdown-preview';
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string): T => {
   const value = document.querySelector<T>(selector);
@@ -30,6 +34,7 @@ interface Doc {
   id: string;
   name: string;
   ref: FileRef | null;
+  displayPath: string | null;
   state: EditorState;
   savedDoc: Text;
   encoding: TextEncoding;
@@ -49,6 +54,9 @@ class MorrowApp {
   private settings: Settings;
   private settingsReadFailed: boolean;
   private settingsSaveFailed = false;
+  private recentClearFailed = false;
+  private workbench: Workbench;
+  private markdownPreview = new MarkdownPreview();
   private recoveryBlocked = false;
   private recoveryCleanupFailed = false;
   private recoveryOperationBusy = false;
@@ -74,6 +82,22 @@ class MorrowApp {
     const loaded = loadSettings();
     this.settings = loaded.settings;
     this.settingsReadFailed = loaded.readFailed;
+    this.workbench = new Workbench({
+      toast: (message) => this.toast(message),
+      confirm: (title, message, buttons, eyebrow) => this.confirm(title, message, buttons, eyebrow),
+      action: (name) => this.handleAction(name),
+      captureSelection: () => this.captureReviewSelection(),
+      targetIsCurrent: (target) => this.reviewIsCurrent(target),
+      applyReview: (target, replacement) => this.applyReviewedChange(target, replacement),
+      focusEditor: () => this.view.focus(),
+      lineCount: () => this.view.state.doc.lines,
+      goToLine: (line, column) => this.goToLine(line, column),
+      openWorkspaceFile: (entry, line, column) => this.openWorkspaceFile(entry, line, column),
+      openRecent: (path) => this.openRecent(path),
+      listOpenDocuments: () => this.docs.map((doc) => ({ id: doc.id, name: doc.name, detail: refPath(doc.ref) || doc.displayPath || (doc.sample ? 'Example' : 'Unsaved'), path: refPath(doc.ref) })),
+      recentPaths: () => this.settings.rememberRecent ? [...this.settings.recentFiles] : [],
+      switchDocument: (id) => this.switchDoc(id),
+    });
   }
 
   private get active(): Doc { return this.docs.find((doc) => doc.id === this.activeId) || this.docs[0]; }
@@ -120,12 +144,12 @@ class MorrowApp {
     else this.bindBrowserDrop();
   }
 
-  private makeDoc(name: string, text = '', options: { ref?: FileRef | null; encoding?: TextEncoding; lineEnding?: LineEnding; mixed?: boolean; hash?: string | null; sample?: boolean; id?: string; savedText?: string | null; savedEncoding?: TextEncoding; savedLineEnding?: LineEnding; cursor?: number; override?: string | null } = {}): Doc {
+  private makeDoc(name: string, text = '', options: { ref?: FileRef | null; displayPath?: string | null; encoding?: TextEncoding; lineEnding?: LineEnding; mixed?: boolean; hash?: string | null; sample?: boolean; id?: string; savedText?: string | null; savedEncoding?: TextEncoding; savedLineEnding?: LineEnding; cursor?: number; override?: string | null } = {}): Doc {
     const state = createEditorState(text, this.settings, (update) => this.onEditorUpdate(update), options.cursor || 0);
     const encoding = options.encoding || 'UTF-8';
     const lineEnding = options.lineEnding || 'LF';
     return {
-      id: options.id || uuid(), name, ref: options.ref || null, state,
+      id: options.id || uuid(), name, ref: options.ref || null, displayPath: options.displayPath || null, state,
       savedDoc: typeof options.savedText === 'string' ? Text.of(options.savedText.split('\n')) : state.doc,
       encoding, savedEncoding: options.savedEncoding || encoding,
       lineEnding, savedLineEnding: options.savedLineEnding || lineEnding,
@@ -184,6 +208,7 @@ class MorrowApp {
       doc.revision++;
       this.renderFiles();
       this.updateStatus();
+      this.updateMarkdownPreview();
       this.scheduleRecovery();
       this.cancelAi();
       this.renderAiStatus();
@@ -302,19 +327,90 @@ class MorrowApp {
 
   private async addOpened(file: OpenedFile): Promise<void> {
     if (file.ref.kind === 'native') {
-      const same = this.docs.find((doc) => doc.ref?.kind === 'native' && doc.ref.path.toLowerCase() === (file.ref as { kind: 'native'; path: string }).path.toLowerCase());
-      if (same) { this.switchDoc(same.id); return; }
+      const path = file.ref.path;
+      const same = this.docs.find((doc) => doc.ref?.kind === 'native' && doc.ref.path.toLowerCase() === path.toLowerCase());
+      if (same) { this.switchDoc(same.id); this.recordRecent(path); return; }
+    } else if (file.ref.kind === 'browser') {
+      for (const current of this.docs) {
+        if (current.ref?.kind !== 'browser') continue;
+        let same = current.ref.handle === file.ref.handle;
+        if (!same && typeof current.ref.handle.isSameEntry === 'function') {
+          try { same = await current.ref.handle.isSameEntry(file.ref.handle); } catch { /* treat unavailable identity as distinct */ }
+        }
+        if (same) { this.switchDoc(current.id); return; }
+      }
     }
     const decoded = decodeFile(file.bytes);
     const hash = await sha256(file.bytes);
-    const doc = this.makeDoc(file.name, decoded.text, { ref: file.ref, encoding: decoded.encoding, lineEnding: decoded.lineEnding, mixed: decoded.mixedLineEndings, hash });
+    const doc = this.makeDoc(file.name, decoded.text, { ref: file.ref, displayPath: file.displayPath, encoding: decoded.encoding, lineEnding: decoded.lineEnding, mixed: decoded.mixedLineEndings, hash });
     // Replace an unused empty untitled buffer, without throwing away anything typed.
     const empty = this.docs.find((item) => !item.ref && !item.sample && !this.dirty(item) && item.state.doc.length === 0);
     this.docs.push(doc);
     // Switch while the old document still exists: update listeners must never target a different tab.
     this.switchDoc(doc.id);
     if (empty) { this.docs.splice(this.docs.indexOf(empty), 1); this.renderAll(); this.scheduleRecovery(); }
+    if (file.ref.kind === 'native') this.recordRecent(file.ref.path);
     if (decoded.mixedLineEndings) this.toast(`Mixed line endings detected in ${file.name}. Saving will normalize them to ${decoded.lineEnding}.`);
+  }
+
+  private recordRecent(path: string): void {
+    if (!this.settings.rememberRecent || this.settingsReadFailed) return;
+    this.settings.recentFiles = [path, ...this.settings.recentFiles.filter((item) => item.toLowerCase() !== path.toLowerCase())].slice(0, 20);
+    this.persistSettings();
+  }
+
+  private async openRecent(path: string): Promise<void> {
+    try { await this.addOpened(await readNative(path)); }
+    catch (error) { this.reportOpenFailures([{ name: path, message: this.errorText(error) }]); }
+  }
+
+  private async openWorkspaceFile(entry: WorkspaceFile, line?: number, column?: number): Promise<void> {
+    try {
+      const opened = await readWorkspaceFile(entry);
+      await this.addOpened(opened);
+      if (line) {
+        const doc = this.active;
+        if (this.dirty(doc)) this.toast('Search results refer to the saved file; unsaved changes may shift the line.');
+        else if (doc.hash && await sha256(opened.bytes) !== doc.hash) this.toast('The file changed on disk since it was opened; this saved-file result may not match the editor.');
+        if (!this.docs.includes(doc)) return;
+        if (this.activeId !== doc.id) this.switchDoc(doc.id);
+        this.goToLine(line, column);
+      }
+    } catch (error) { this.reportOpenFailures([{ name: entry.relative, message: this.errorText(error) }]); }
+  }
+
+  private goToLine(line: number, column = 1): void {
+    const number = Math.max(1, Math.min(this.view.state.doc.lines, Math.trunc(line)));
+    const target = this.view.state.doc.line(number);
+    const position = Math.min(target.to, target.from + Math.max(0, Math.trunc(column) - 1));
+    this.view.dispatch({ selection: { anchor: position }, effects: EditorView.scrollIntoView(position, { y: 'center' }) });
+    this.view.focus();
+  }
+
+  private captureReviewSelection(): ReviewTarget {
+    const selection = this.view.state.selection;
+    if (selection.ranges.length !== 1) throw new Error('Select one continuous range of text to review.');
+    const range = selection.main;
+    const doc = this.active;
+    return makeReviewTarget(doc.id, doc.revision, refPath(doc.ref) || doc.displayPath || doc.name, range.from, range.to, this.view.state.sliceDoc(range.from, range.to));
+  }
+
+  private reviewIsCurrent(target: ReviewTarget): boolean {
+    const doc = this.docs.find((item) => item.id === target.docId);
+    if (!doc || target.to > doc.state.doc.length) return false;
+    return reviewTargetIsCurrent(target, doc.id, doc.revision, doc.state.sliceDoc(target.from, target.to));
+  }
+
+  private applyReviewedChange(target: ReviewTarget, replacement: string): void {
+    if (!this.reviewIsCurrent(target)) throw new Error('The target document changed or was closed. Select it again before applying.');
+    if (target.docId !== this.activeId) this.switchDoc(target.docId);
+    this.view.dispatch({
+      changes: { from: target.from, to: target.to, insert: replacement },
+      selection: { anchor: target.from + replacement.length },
+      annotations: isolateHistory.of('full'),
+      userEvent: 'input.morrow-review',
+    });
+    this.view.focus();
   }
 
   private async saveDoc(doc: Doc, saveAs = false): Promise<boolean> {
@@ -348,7 +444,9 @@ class MorrowApp {
           digest = await writeTo(target.ref, bytes, target.name, expected);
         } else digest = await writeTo(target.ref, bytes, target.name, expected, true);
       }
+      if (!this.sameRef(doc.ref, target.ref)) doc.displayPath = null;
       doc.ref = target.ref; doc.name = target.name; doc.hash = digest; doc.sample = false;
+      if (target.ref.kind === 'native') this.recordRecent(target.ref.path);
       doc.savedDoc = textAtSave; doc.savedEncoding = encodingAtSave; doc.savedLineEnding = endingAtSave; doc.mixedLineEndings = false;
       this.renderAll(); if (doc.id === this.activeId) void this.applyLanguage();
       this.scheduleRecovery();
@@ -415,13 +513,21 @@ class MorrowApp {
   private renderFiles(): void {
     const tabs = $('#tabs'), list = $('#file-list');
     tabs.replaceChildren(); list.replaceChildren();
+    const nameCounts = new Map<string, number>(), labelCounts = new Map<string, number>();
+    for (const doc of this.docs) nameCounts.set(doc.name.toLowerCase(), (nameCounts.get(doc.name.toLowerCase()) || 0) + 1);
     for (const doc of this.docs) {
+      const fullPath = refPath(doc.ref) || doc.displayPath;
+      const parent = fullPath?.match(/^(.*)[\\/][^\\/]+$/u)?.[1] || (doc.sample ? 'example' : 'unsaved');
+      let displayName = (nameCounts.get(doc.name.toLowerCase()) || 0) > 1 ? `${doc.name} · ${parent}` : doc.name;
+      const labelKey = displayName.toLowerCase();
+      const labelCount = (labelCounts.get(labelKey) || 0) + 1; labelCounts.set(labelKey, labelCount);
+      if (labelCount > 1) displayName += ` (${labelCount})`;
       const active = doc.id === this.activeId, dirty = this.dirty(doc);
       const tab = el('div', `tab${active ? ' active' : ''}`);
       tab.setAttribute('role', 'tab'); tab.setAttribute('aria-selected', String(active)); tab.tabIndex = active ? 0 : -1;
-      tab.title = refPath(doc.ref) || `${doc.name}${doc.sample ? ' (example)' : ''}`;
+      tab.title = fullPath || `${doc.name}${doc.sample ? ' (example)' : ''}`;
       tab.append(this.fileBadge(doc.name));
-      const tabName = el('span', 'tab-name'); tabName.textContent = doc.name; tab.append(tabName);
+      const tabName = el('span', 'tab-name'); tabName.textContent = displayName; tab.append(tabName);
       if (dirty) { const dot = el('span', 'dirty-dot'); dot.title = 'Unsaved changes'; tab.append(dot); }
       const close = el('button', 'tab-close'); close.type = 'button'; close.innerHTML = icon('close', 13); close.setAttribute('aria-label', `Close ${doc.name}`); close.title = `Close ${doc.name}`;
       close.addEventListener('click', (event) => { event.stopPropagation(); void this.closeDoc(doc.id); });
@@ -430,8 +536,8 @@ class MorrowApp {
       tabs.append(tab);
 
       const item = el('button', `file-list-item${active ? ' active' : ''}`); item.type = 'button'; item.setAttribute('role', 'listitem');
-      item.title = refPath(doc.ref) || doc.name; item.append(this.fileBadge(doc.name));
-      const itemName = el('span', 'file-list-name'); itemName.textContent = doc.name; item.append(itemName);
+      item.title = fullPath || doc.name; item.append(this.fileBadge(doc.name));
+      const itemName = el('span', 'file-list-name'); itemName.textContent = displayName; item.append(itemName);
       if (dirty) { const dot = el('span', 'dirty-dot'); dot.title = 'Unsaved changes'; item.append(dot); }
       else if (doc.sample) { const tag = el('span', 'file-list-state'); tag.textContent = 'SAMPLE'; item.append(tag); }
       item.addEventListener('click', () => this.switchDoc(doc.id)); list.append(item);
@@ -489,6 +595,7 @@ class MorrowApp {
     if (this.recoveryBlocked) messages.push('The previous recovery session could not be read. Its stored copy has not been overwritten. Save your current work and restart after fixing storage.');
     else if (this.recoveryFailed && this.settings.recovery) messages.push('A recovery copy could not be saved. Save your work to a file.');
     if (this.recoveryCleanupFailed && !this.settings.recovery) messages.push('Recovery is off, but an old recovery copy could not be removed and may still contain text.');
+    if (this.recentClearFailed) messages.push('Recent file paths could not be cleared from local storage and may still be present after restart.');
     const warning = $('#storage-warning');
     $('#storage-warning-text').textContent = messages.join(' ');
     warning.hidden = messages.length === 0;
@@ -503,7 +610,19 @@ class MorrowApp {
 
   private renderAll(): void {
     if (!this.view) return;
-    this.renderFiles(); this.updateStatus(); this.renderRecoveryStatus(); this.renderStorageWarning(); this.renderAiStatus();
+    this.renderFiles(); this.updateStatus(); this.renderRecoveryStatus(); this.renderStorageWarning(); this.renderAiStatus(); this.updateMarkdownPreview();
+  }
+
+  private updateMarkdownPreview(): void {
+    if (!this.markdownPreview.isOpen() || !this.activeId) return;
+    const doc = this.active;
+    this.markdownPreview.update(`${doc.id}:${doc.revision}`, doc.state.doc.length, () => doc.state.doc.toString());
+  }
+
+  private toggleMarkdownPreview(): void {
+    this.markdownPreview.setOpen(!this.markdownPreview.isOpen());
+    this.updateMarkdownPreview();
+    this.view.requestMeasure();
   }
 
   private applyEditorPreferences(): void {
@@ -522,7 +641,9 @@ class MorrowApp {
     $('#wrap-button').setAttribute('aria-pressed', String(this.settings.wrap));
     $('#setting-wrap').setAttribute('aria-checked', String(this.settings.wrap));
     $('#setting-recovery').setAttribute('aria-checked', String(this.settings.recovery));
+    $('#setting-recent').setAttribute('aria-checked', String(this.settings.rememberRecent));
     $<HTMLButtonElement>('#setting-recovery').disabled = this.settingsReadFailed || this.recoveryOperationBusy || (!this.settings.recovery && this.recoveryCleanupFailed);
+    $<HTMLButtonElement>('#setting-recent').disabled = this.settingsReadFailed;
     $<HTMLSelectElement>('#setting-theme').value = this.settings.theme;
     $<HTMLSelectElement>('#setting-font').value = String(this.settings.fontSize);
     $<HTMLSelectElement>('#tab-size').value = String(this.settings.tabSize);
@@ -537,6 +658,7 @@ class MorrowApp {
     // Do not replace unreadable settings with defaults; doing so could also erase the user's recovery preference.
     const saved = !this.settingsReadFailed && saveSettings(this.settings);
     this.settingsSaveFailed = !saved && !this.settingsReadFailed;
+    if (saved && this.settings.recentFiles.length === 0) this.recentClearFailed = false;
     this.applySettings(); this.updateStatus(); this.scheduleRecovery();
     return saved;
   }
@@ -576,6 +698,7 @@ class MorrowApp {
 
   private async handleAction(action: string): Promise<void> {
     this.closeMenus();
+    if (await this.workbench.action(action)) return;
     switch (action) {
       case 'new': this.newFile(); break;
       case 'open': await this.openFiles(); break;
@@ -589,11 +712,12 @@ class MorrowApp {
       case 'replace': this.showFind(true); break;
       case 'sidebar': this.toggleSidebar(); break;
       case 'wrap': this.toggleWrap(); break;
+      case 'preview-markdown': this.toggleMarkdownPreview(); break;
       case 'theme': this.toggleTheme(); break;
       case 'settings': this.showDialog('settings-dialog'); break;
       case 'shortcuts': this.showDialog('help-dialog'); break;
       case 'ai': this.toggleAiPanel(); break;
-      case 'about': await this.confirm('A little space for big ideas.', `Morrow 0.1.1 is an open-source text and code editor. Your files stay yours. This is an early preview; save important work regularly.`, [{ id: 'ok', label: 'Sounds good', style: 'primary' }], 'ABOUT MORROW'); break;
+      case 'about': await this.confirm('A little space for big ideas.', `Morrow 0.2.0 is an open-source text and code editor. Your files stay yours. This is an early preview; save important work regularly.`, [{ id: 'ok', label: 'Sounds good', style: 'primary' }], 'ABOUT MORROW'); break;
     }
   }
 
@@ -655,7 +779,7 @@ class MorrowApp {
     if (this.settings.aiEnabled) {
       this.settings.aiEnabled = false; this.cancelAi(); clearGhost(this.view); this.persistSettings(); this.renderAiStatus(); return;
     }
-    const choice = await this.confirm('Turn on AI suggestions?', 'As you type, up to 3,500 characters before and 1,200 after your cursor are sent to Ollama at 127.0.0.1 on this computer. Ollama and the model determine whether data is forwarded elsewhere. Suggestions turn off when Morrow restarts. Use a local model for offline use.', [
+    const choice = await this.confirm('Turn on AI suggestions?', 'As you type, up to 3,500 characters before and 1,200 after your cursor are sent to Ollama at 127.0.0.1 on this computer. Ollama can route to cloud models, so a local address alone does not guarantee on-device processing. Verify your model and Ollama configuration. Suggestions turn off when Morrow restarts.', [
       { id: 'cancel', label: 'Not now' }, { id: 'enable', label: 'Enable suggestions', style: 'primary' },
     ], 'YOUR CHOICE');
     if (choice !== 'enable') return;
@@ -751,6 +875,18 @@ class MorrowApp {
     $('#setting-theme').addEventListener('change', (event) => { this.settings.theme = (event.target as HTMLSelectElement).value as 'dark' | 'light'; this.persistSettings(); });
     $('#setting-font').addEventListener('change', (event) => { this.settings.fontSize = Number((event.target as HTMLSelectElement).value); this.persistSettings(); });
     $('#setting-wrap').addEventListener('click', () => this.toggleWrap());
+    $('#setting-recent').addEventListener('click', () => {
+      if (this.settingsReadFailed) return;
+      this.settings.rememberRecent = !this.settings.rememberRecent;
+      if (!this.settings.rememberRecent) this.settings.recentFiles = [];
+      const saved = this.persistSettings();
+      if (!saved && !this.settings.rememberRecent) { this.recentClearFailed = true; this.renderStorageWarning(); }
+    });
+    $('#clear-recent').addEventListener('click', () => {
+      this.settings.recentFiles = [];
+      if (this.persistSettings()) this.toast('Recent file paths cleared.');
+      else { this.recentClearFailed = true; this.renderStorageWarning(); this.toast('Could not clear stored recent file paths.'); }
+    });
     $('#setting-recovery').addEventListener('click', () => { void this.toggleRecovery(); });
     $('#retry-recovery-cleanup').addEventListener('click', () => { void this.retryRecoveryCleanup(); });
     $('#ai-toggle').addEventListener('click', () => { void this.toggleAi(); });
@@ -847,7 +983,10 @@ class MorrowApp {
     if (event.key === 'F3' && this.findOpen) { event.preventDefault(); event.shiftKey ? findPrevious(this.view) : findNext(this.view); return; }
     if (event.altKey && !mod && key === 'z') { event.preventDefault(); this.toggleWrap(); return; }
     if (!mod || event.altKey) return;
-    const map: Record<string, string> = { n: 'new', o: 'open', s: event.shiftKey ? 'save-as' : 'save', w: 'close', f: 'find', h: 'replace', b: 'sidebar', ',': 'settings' };
+    if (event.shiftKey && (key === 'f' || key === 'p')) {
+      event.preventDefault(); event.stopPropagation(); void this.handleAction(key === 'f' ? 'find-files' : 'command-palette'); return;
+    }
+    const map: Record<string, string> = { n: 'new', o: 'open', s: event.shiftKey ? 'save-as' : 'save', w: 'close', f: 'find', h: 'replace', b: 'sidebar', p: 'quick-open', g: 'goto-line', ',': 'settings' };
     if (map[key] && (!event.shiftKey || key === 's')) { event.preventDefault(); event.stopPropagation(); void this.handleAction(map[key]); }
   }
 

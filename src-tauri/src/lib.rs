@@ -1,10 +1,11 @@
 use percent_encoding::percent_decode_str;
 use sha2::{Digest, Sha256};
-use std::{fs, io::Write, path::{Path, PathBuf}, sync::Mutex};
+use std::{fs, io::{Read, Write}, path::{Path, PathBuf}, sync::Mutex};
 use tauri::{Emitter, Manager, State};
 use tauri_plugin_fs::FsExt;
 
 const MAX_FILE_BYTES: usize = 20 * 1024 * 1024;
+const MAX_DIRECTORY_ENTRIES: usize = 2_000;
 
 #[derive(Default)]
 struct LaunchQueue(Mutex<Vec<String>>);
@@ -66,8 +67,8 @@ fn atomic_write(path: &Path, data: &[u8], expected: &str, force: bool) -> Result
     Ok(())
 }
 
-/// Only files explicitly selected in a native dialog, dropped, or launched as arguments
-/// are in the plugin's dynamic scope. Body is raw bytes; the path is percent-encoded.
+/// Only files or folders selected, dropped, or launched by the user are in the
+/// plugin's dynamic scope. Body is raw bytes; the path is percent-encoded.
 #[tauri::command]
 async fn safe_write(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
     let data = match request.body() {
@@ -87,6 +88,86 @@ async fn safe_write(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> 
         .await.map_err(|err| format!("Save task failed: {err}"))?
 }
 
+/// Windows junctions and other reparse points are deliberately not treated as
+/// ordinary files or folders. This does not close races in parent directories.
+fn is_link_or_reparse(metadata: &fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        metadata.file_type().is_symlink() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    }
+    #[cfg(not(windows))]
+    { metadata.file_type().is_symlink() }
+}
+
+/// Read at most one extra entry to detect truncation; do not materialize an
+/// arbitrarily large native directory listing in Rust or the webview.
+fn bounded_directory(path: &Path) -> Result<serde_json::Value, String> {
+    let metadata = fs::symlink_metadata(path).map_err(|err| format!("Cannot inspect folder: {err}"))?;
+    if is_link_or_reparse(&metadata) || !metadata.is_dir() { return Err("This is not a regular folder, or it is a link/reparse point.".into()); }
+    let mut source = fs::read_dir(path).map_err(|err| format!("Cannot read folder: {err}"))?;
+    let mut entries = Vec::new();
+    let mut skipped = 0usize;
+    for _ in 0..MAX_DIRECTORY_ENTRIES {
+        let entry = match source.next() {
+            Some(Ok(entry)) => entry,
+            Some(Err(_)) => { skipped += 1; continue; }
+            None => return Ok(serde_json::json!({ "entries": entries, "skippedLinks": skipped, "truncated": false })),
+        };
+        // Do not use a lossy filename: it could accidentally refer to another path.
+        let name = match entry.file_name().into_string() { Ok(name) => name, Err(_) => { skipped += 1; continue; } };
+        let metadata = match fs::symlink_metadata(entry.path()) { Ok(value) => value, Err(_) => { skipped += 1; continue; } };
+        if is_link_or_reparse(&metadata) || (!metadata.is_file() && !metadata.is_dir()) { skipped += 1; continue; }
+        entries.push(serde_json::json!({ "name": name, "isFile": metadata.is_file(), "isDirectory": metadata.is_dir() }));
+    }
+    Ok(serde_json::json!({ "entries": entries, "skippedLinks": skipped, "truncated": source.next().is_some() }))
+}
+
+/// Bound native reads even if the file grows after the metadata check. The final
+/// component is opened without following links; parent-directory races remain.
+fn bounded_read(path: &Path, max_bytes: usize) -> Result<Vec<u8>, String> {
+    if max_bytes == 0 || max_bytes > MAX_FILE_BYTES { return Err("Invalid file size limit.".into()); }
+    let metadata = fs::symlink_metadata(path).map_err(|err| format!("Cannot inspect file: {err}"))?;
+    if is_link_or_reparse(&metadata) || !metadata.is_file() { return Err("Symbolic links, reparse points and non-regular files are skipped.".into()); }
+    if metadata.len() > max_bytes as u64 { return Err(format!("File exceeds the {} MiB limit for this operation.", max_bytes / 1024 / 1024)); }
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let file = options.open(path).map_err(|err| format!("Cannot open file: {err}"))?;
+    let opened = file.metadata().map_err(|err| format!("Cannot inspect open file: {err}"))?;
+    if is_link_or_reparse(&opened) || !opened.is_file() { return Err("The opened item is not a regular file.".into()); }
+    let mut bytes = Vec::new();
+    file.take(max_bytes as u64 + 1).read_to_end(&mut bytes).map_err(|err| format!("Cannot read file: {err}"))?;
+    if bytes.len() > max_bytes { return Err("File grew beyond the size limit while reading.".into()); }
+    Ok(bytes)
+}
+
+#[tauri::command]
+async fn workspace_list_directory(app: tauri::AppHandle, path: String) -> Result<serde_json::Value, String> {
+    let path = PathBuf::from(path);
+    if !app.fs_scope().is_allowed(&path) { return Err("This folder has not been selected for access in Morrow.".into()); }
+    tauri::async_runtime::spawn_blocking(move || bounded_directory(&path)).await.map_err(|err| format!("Folder task failed: {err}"))?
+}
+
+#[tauri::command]
+async fn workspace_read_file(app: tauri::AppHandle, path: String, max_bytes: usize) -> Result<tauri::ipc::Response, String> {
+    let path = PathBuf::from(path);
+    if !app.fs_scope().is_allowed(&path) { return Err("This file has not been selected for access in Morrow.".into()); }
+    let bytes = tauri::async_runtime::spawn_blocking(move || bounded_read(&path, max_bytes)).await.map_err(|err| format!("File task failed: {err}"))??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -102,13 +183,14 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_persisted_scope::init())
         .setup(|app| {
             let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().to_string();
             collect_launch_files(app.handle(), std::env::args().collect(), &cwd);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![safe_write, take_launch_files])
+        .invoke_handler(tauri::generate_handler![safe_write, take_launch_files, workspace_list_directory, workspace_read_file])
         .run(tauri::generate_context!())
         .expect("error while running Morrow");
 }
@@ -127,6 +209,38 @@ mod tests {
         assert_eq!(fs::read(&path).unwrap(), b"changed by another app");
         atomic_write(&path, b"new", &old_hash, true).unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"new");
+    }
+    #[test]
+    fn workspace_file_read_is_bounded_and_rejects_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("data.txt");
+        fs::write(&path, b"123456").unwrap();
+        assert_eq!(bounded_read(&path, 6).unwrap(), b"123456");
+        assert!(bounded_read(&path, 5).is_err());
+        assert!(bounded_read(dir.path(), 10).is_err());
+        assert!(bounded_read(&path, MAX_FILE_BYTES + 1).is_err());
+    }
+    #[test]
+    fn workspace_listing_is_bounded_before_serialization() {
+        let dir = tempfile::tempdir().unwrap();
+        for n in 0..(MAX_DIRECTORY_ENTRIES + 1) {
+            fs::write(dir.path().join(format!("{n}.txt")), b"").unwrap();
+        }
+        let listing = bounded_directory(dir.path()).unwrap();
+        assert_eq!(listing["entries"].as_array().unwrap().len(), MAX_DIRECTORY_ENTRIES);
+        assert_eq!(listing["truncated"], true);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn workspace_skips_links_in_listings_and_reads() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("real.txt"), b"real").unwrap();
+        symlink(dir.path().join("real.txt"), dir.path().join("link.txt")).unwrap();
+        let listing = bounded_directory(dir.path()).unwrap();
+        assert_eq!(listing["entries"].as_array().unwrap().len(), 1);
+        assert_eq!(listing["skippedLinks"], 1);
+        assert!(bounded_read(&dir.path().join("link.txt"), 20).is_err());
     }
     #[test]
     fn safe_write_creates_file_in_selected_directory() {

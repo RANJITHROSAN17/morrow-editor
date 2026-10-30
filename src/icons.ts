@@ -10,6 +10,7 @@ const paths: Record<string, string> = {
   down: '<path d="m7 10 5 5 5-5"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
   panel: '<rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M9 4v16"/>',
+  preview: '<rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M12 4v16M6 8h3M6 11h3M15 8h3M15 11h3M15 14h3"/>',
   wrap: '<path d="M4 7h16M4 11h12a3 3 0 0 1 0 6H12M14 15l-2 2 2 2M4 15h4"/>',
   save: '<path d="M5 3.5h12l2.5 2.5V20H4.5V4z"/><path d="M8 3.5v5h8v-5M8 20v-7h8v7"/>',
   undo: '<path d="M9 8 5 12l4 4M5 12h9a5 5 0 0 1 5 5"/>',

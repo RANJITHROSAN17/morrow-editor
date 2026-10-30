@@ -11,8 +11,11 @@ export interface Settings {
   aiEnabled: boolean;
   model: string;
   sidebar: boolean;
+  // Recent paths are optional and unencrypted, and are remembered only after opt-in.
+  rememberRecent: boolean;
+  recentFiles: string[];
 }
-export const defaults: Settings = { theme: 'dark', wrap: false, recovery: true, fontSize: 14, tabSize: 4, aiEnabled: false, model: DEFAULT_MODEL, sidebar: true };
+export const defaults: Settings = { theme: 'dark', wrap: false, recovery: true, fontSize: 14, tabSize: 4, aiEnabled: false, model: DEFAULT_MODEL, sidebar: true, rememberRecent: false, recentFiles: [] };
 export const SETTINGS_KEY = 'morrow.settings.v1';
 export interface SavedDocument {
   id: string;
@@ -55,6 +58,10 @@ export function loadSettings(): LoadedSettings {
         aiEnabled: false,
         model: typeof saved.model === 'string' && saved.model.trim() ? saved.model.trim().slice(0, 120) : DEFAULT_MODEL,
         sidebar: typeof saved.sidebar === 'boolean' ? saved.sidebar : defaults.sidebar,
+        rememberRecent: saved.rememberRecent === true,
+        recentFiles: saved.rememberRecent === true && Array.isArray(saved.recentFiles)
+          ? [...new Set(saved.recentFiles.filter((path): path is string => typeof path === 'string' && path.length > 0 && path.length <= 4096))].slice(0, 20)
+          : [],
       },
     };
   } catch {
@@ -66,7 +73,7 @@ export function loadSettings(): LoadedSettings {
 /** Return failure to the UI. AI consent is deliberately not persisted across launches. */
 export function saveSettings(settings: Settings): boolean {
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...settings, aiEnabled: false }));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...settings, aiEnabled: false, recentFiles: settings.rememberRecent ? settings.recentFiles.slice(0, 20) : [] }));
     return true;
   } catch { return false; }
 }
