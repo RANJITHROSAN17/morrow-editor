@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in Morrow is broken or behaves unexpectedly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Never paste API keys, private file contents or sensitive text here.**
+        Security issues go to the private channel in `SECURITY.md`, not this form.
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: "Settings → System → About, or `winver`. Include the build number."
+      placeholder: "Windows 11 24H2, build 26100"
+    validations:
+      required: true
+  - type: input
+    id: install
+    attributes:
+      label: How are you running Morrow?
+      placeholder: "Installed NSIS build / `npm run tauri dev` / browser preview"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a folder
+        2. Press Ctrl+Shift+F
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Screenshots help for UI issues. Redact anything private first.
+    validations:
+      required: false

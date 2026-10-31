@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest a capability or an improvement
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Morrow is deliberately small. "It should stay small" is a legitimate response, so describe
+        the problem rather than only the feature — the smallest fix is often not the one proposed.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like Morrow to do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What do you use today instead?
+    validations:
+      required: false
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Would you be willing to open a PR for this?
+      options:
+        - "Yes"
+        - "Maybe, with guidance"
+        - "No — I am only reporting the idea"
+    validations:
+      required: true
