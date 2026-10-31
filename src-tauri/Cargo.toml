@@ -29,7 +29,7 @@ percent-encoding = "2"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-[dev-dependencies]
+[target.'cfg(not(windows))'.dev-dependencies]
 tauri = { version = "2", features = ["test"] }
 
 [profile.release]
