@@ -2,7 +2,7 @@ name: Windows x64 preview
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [qa/windows-design-0-4-0-20261031]
   pull_request:
 
 permissions:
@@ -54,3 +54,82 @@ jobs:
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/SHA256SUMS.txt
           if-no-files-found: error
+
+  gui-review:
+    needs: build-windows
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      ANONYMIZED_TELEMETRY: 'false'
+      WINDOWS_MCP_DISABLE_FLASH: '1'
+      PYTHONIOENCODING: utf-8
+      MORROW_QA_OUTPUT: qa-output
+      MORROW_QA_TARGETED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Record Windows environment
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force qa-output | Out-Null
+          Get-CimInstance Win32_OperatingSystem |
+            Select-Object Caption,Version,BuildNumber,OSArchitecture |
+            ConvertTo-Json | Out-File -Encoding utf8 qa-output/windows-os.json
+          Get-CimInstance Win32_ComputerSystem |
+            Select-Object Manufacturer,Model |
+            ConvertTo-Json | Out-File -Encoding utf8 qa-output/machine.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Install the pinned Windows-MCP package
+        shell: pwsh
+        run: |
+          python -m pip download --disable-pip-version-check --no-deps --only-binary=:all: 'windows-mcp==0.8.8' --dest qa-package
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $wheel = Get-ChildItem qa-package -Filter 'windows_mcp-0.8.8-*.whl' | Select-Object -First 1
+          if (-not $wheel) { throw 'Pinned Windows-MCP wheel not found' }
+          $expected = '597ef720e1902ba76510a4d2b946949f8a48f281dd210c183de5ded60ea3b873'
+          if ((Get-FileHash $wheel.FullName -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'Windows-MCP wheel checksum mismatch' }
+          python -m pip install --disable-pip-version-check $wheel.FullName 'fastmcp==4.0.11' 'mcp==2.3.0' 'pydantic-settings>=2.14.2'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip show windows-mcp | Out-File -Encoding utf8 qa-output/windows-mcp-package.txt
+          python -m pip freeze | Out-File -Encoding utf8 qa-output/python-packages.txt
+      - name: Download candidate installer from this run
+        uses: actions/download-artifact@v4
+        with:
+          name: Morrow-windows-x64-unsigned
+          path: qa-installer
+      - name: Verify and install the unsigned preview
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem qa-installer -Filter '*-setup.exe' -Recurse | Select-Object -First 1
+          if (-not $setup) { throw 'Installer not found in candidate artifact' }
+          $sumFile = Get-ChildItem qa-installer -Filter 'SHA256SUMS.txt' -Recurse | Select-Object -First 1
+          if (-not $sumFile) { throw 'Candidate checksum not found' }
+          $expected = ((Get-Content $sumFile.FullName -Raw).Trim() -split '\s+')[0].ToLower()
+          $actual = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower()
+          "SHA256=$actual" | Out-File -Encoding utf8 qa-output/installer-hash.txt
+          if ($actual -ne $expected) { throw 'Installer checksum mismatch; refusing to run it' }
+          $installDir = Join-Path $env:RUNNER_TEMP 'MorrowQA'
+          $p = Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$installDir" -PassThru
+          if (-not $p.WaitForExit(180000)) { $p.Kill(); throw 'Silent installer did not exit within 180 seconds' }
+          "exitCode=$($p.ExitCode)" | Out-File -Append -Encoding utf8 qa-output/installer-hash.txt
+          if ($p.ExitCode -ne 0) { throw "Silent installer exited $($p.ExitCode)" }
+          $exe = Get-ChildItem $installDir -Filter 'morrow-editor.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) { throw "Installed morrow-editor.exe not found under $installDir" }
+          "MORROW_QA_EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "installedExe=$($exe.FullName)" | Out-File -Append -Encoding utf8 qa-output/installer-hash.txt
+      - name: Run synthetic scripted MCP review
+        shell: pwsh
+        run: |
+          python qa/windows-mcp/review.py 2>&1 | Tee-Object -FilePath qa-output/client-log.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload short-lived synthetic evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Morrow-0.4.0-Windows-QA-evidence
+          path: qa-output/
+          if-no-files-found: warn
+          retention-days: 3
