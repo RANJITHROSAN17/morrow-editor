@@ -77,6 +77,13 @@ for (const [i, item] of doc.items.entries()) {
   }
 
   // The completeness gate only applies to things the bot may actually file.
+  // A shipped entry is what lets the bot close an issue it opened, and the close comment names
+  // the release. Without one the workflow refuses to close, so a missing `release` is a
+  // silent stall, not a cosmetic gap.
+  if (item.status === "shipped" && !item.release) {
+    fail(`${at}: status 'shipped' needs a 'release' (the tag it shipped in)`);
+  }
+
   if (item.status === "ready" || item.status === "filed") {
     readyCount += 1;
     if (item.difficulty === "easy") easyReady += 1;

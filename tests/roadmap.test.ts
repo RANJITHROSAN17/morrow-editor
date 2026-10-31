@@ -99,6 +99,35 @@ describe('contributor queue manifest', () => {
     }
   });
 
+  it('refuses a shipped entry that does not name its release', () => {
+    // The workflow only closes an issue it opened when the manifest names the tag, so a
+    // shipped entry without one is a silent stall rather than a cosmetic omission.
+    const { path, cleanup } = fixture({
+      meta: { open_easy_cap: 3 },
+      items: [complete({ status: 'shipped' })],
+    });
+    try {
+      const { code, out } = run(path);
+      expect(code).toBe(1);
+      expect(out).toMatch(/needs a 'release'/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('accepts a shipped entry that names its release', () => {
+    const { path, cleanup } = fixture({
+      meta: { open_easy_cap: 3 },
+      items: [complete({ status: 'shipped', release: 'v0.2.0' })],
+    });
+    try {
+      const { code, out } = run(path);
+      expect(code, out).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
   it('exempts backlog entries from the completeness gate', () => {
     const { path, cleanup } = fixture({
       meta: { open_easy_cap: 3 },

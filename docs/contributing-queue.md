@@ -25,13 +25,16 @@ you edit roadmap.json  →  PR review  →  merge  →  bot files ONE issue  →
    `scripts/validate-roadmap.js` and **fails the PR** if any is missing, or if the body does not
    name a file, or if there are more than three `easy` candidates. You cannot merge a
    half-specified task, which is the entire point.
-3. **File.** The weekly (hourly-checked, cap-gated) workflow files the first eligible item with a
-   hidden `<!-- roadmap:ID -->` marker and a footer naming you and your reply SLA.
+3. **File.** A weekly workflow (Mondays, and the cap-gated part matters more than the schedule)
+   files the first eligible item with a hidden `<!-- roadmap:ID -->` marker and a footer naming
+   you and your reply SLA.
 4. **Answer.** Reply within the SLA stated in `meta.reply_sla_hours`. If you cannot, set
    `"status": "backlog"` and close with a note — a closed, honestly-parked issue is better than an
    open one nobody answers.
-5. **Ship.** Set `"status": "shipped"`. The bot comments the release name and closes **only**
-   issues it created itself; it refuses to touch anything a human opened.
+5. **Ship.** Set `"status": "shipped"` **and** `"release": "v0.2.0"`. The bot comments that tag
+   and closes **only** issues it created itself; it refuses to touch anything a human opened.
+   Without the `release` field the validator fails the PR, because a close comment that cannot
+   name a release is a promise nobody can keep.
 
 ## Rules the bot enforces in code, not in a prompt
 
@@ -53,14 +56,15 @@ node scripts/validate-roadmap.js .github/roadmap.json     # same gate CI uses
 gh workflow run contributor-queue.yml -f dry_run=true     # report, change nothing
 ```
 
-After the first week of `dry_run: true`, flip the schedule to live by dispatching with
-`dry_run=false`.
+A scheduled run is **live** and files one issue. A manual dispatch defaults to `dry_run: true`,
+so the only way to file by accident is to ask for it explicitly with `-f dry_run=false`.
 
-## If the two bot loops collide
+To seed the first issue, dispatch once with `-f dry_run=false`, then read what it filed before
+leaving the schedule to do the rest.
 
-`scripts/growth.js` also files issues (label `growth`). Two filing loops means two queues and a
-breached cap. Pick one:
+## There is deliberately only one filing loop
 
-- **Narrow `growth.js` to research + annotate only** (recommended), so all issue creation flows
-  through this reviewed manifest; or
-- count `label:growth` toward the same cap in the `Count the open curated queue` step.
+Morrow has no `scripts/growth.js` and no growth workflow — unlike the sibling `Pinch` repo, where
+this manifest came from. Two filing loops means two queues and a breached cap, so if a growth bot
+is ever added here, it must **not** create issues. Let it research and annotate; all issue
+creation stays in the reviewed manifest above.
