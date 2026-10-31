@@ -365,6 +365,10 @@ mod tests {
         }
         assert_eq!(trusted_editor_navigation(&"http://localhost:1420/".parse().unwrap()), cfg!(debug_assertions));
     }
+    // Tauri mock runtime currently fails to start on the hosted Windows runner
+    // with STATUS_ENTRYPOINT_NOT_FOUND; exercise this boundary on Linux and
+    // validate real permitted commands separately in the Windows GUI smoke test.
+    #[cfg(not(windows))]
     #[test]
     fn ipc_manifest_allows_only_the_local_main_webview() {
         use tauri::test::{get_ipc_response, mock_builder, INVOKE_KEY};
