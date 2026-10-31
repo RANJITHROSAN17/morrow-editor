@@ -199,9 +199,9 @@ test('Arena browser workflow requires an explicit click, and API keys are not pe
   await page.locator('[data-menu="edit"]').click(); await page.locator('[data-menu-panel="edit"] [data-action="arena"]').click();
   await expect(page.getByRole('heading', { name: 'Arena & change review' })).toBeVisible();
   expect(await page.evaluate(() => (window as Window & { __openedArena?: string }).__openedArena)).toBeUndefined();
-  await page.locator('.arena-browser-fallback summary').click();
   await page.getByRole('button', { name: 'Open Arena in browser' }).click();
-  expect(await page.evaluate(() => (window as Window & { __openedArena?: string }).__openedArena)).toBe('https://arena.ai/');
+  expect(await page.evaluate(() => (window as Window & { __openedArena?: string }).__openedArena)).toBe('https://arena.ai/agent');
+  await page.getByRole('button', { name: /API key Optional desktop integration/ }).click();
   await page.locator('#arena-key').fill('private-test-key');
   await page.locator('#arena-instruction').fill('Improve this');
   await page.getByRole('button', { name: 'Capture selection' }).click();

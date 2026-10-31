@@ -1,7 +1,7 @@
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { desktop, fileName } from './platform';
 import { MAX_REVIEW_CHARS, makeReviewTarget, normalizeReplacement, reviewDiff, type ReviewTarget } from './change-review';
-import { ARENA_API_ENDPOINT, ARENA_KEYS_URL, ARENA_PRIVACY_URL, ARENA_WEBSITE, MAX_ARENA_CONTEXT, buildArenaRequest, requestArenaBatch, type ArenaMode, type ArenaRequest } from './arena';
+import { ARENA_API_ENDPOINT, ARENA_KEYS_URL, ARENA_PRIVACY_URL, ARENA_WEBSITE, MAX_ARENA_CONTEXT, buildArenaRequest, buildBrowserPrompt, requestArenaBatch, type ArenaMode, type ArenaRequest } from './arena';
 import { findPotentialSecrets } from './sensitive-text';
 import { MAX_WORKSPACE_ROOTS, createWorkspaceEntry, listWorkspaceDirectory, pickWorkspace, searchWorkspace, walkWorkspace, type DirectoryListing, type NewWorkspaceEntryKind, type SearchResult, type WalkProgress, type WorkspaceDirectory, type WorkspaceFile } from './workspace';
 
@@ -79,6 +79,7 @@ export class Workbench {
   private reviewTarget: ReviewTarget | null = null;
   private reviewTimer = 0;
   private arenaTarget: ReviewTarget | null = null;
+  private browserTarget: ReviewTarget | null = null;
   private arenaController: AbortController | null = null;
   private arenaResults: ({ target: ReviewTarget | null; text: string; mode: ArenaMode } | null)[] = [];
 
@@ -531,7 +532,8 @@ export class Workbench {
   }
 
   private showArena(): void {
-    this.arenaTarget = null;
+    this.arenaTarget = null; this.browserTarget = null;
+    this.setArenaPanel('browser');
     $<HTMLTextAreaElement>('#arena-selection').value = '';
     this.clearArenaResults(); this.updateSensitiveWarning(); this.updateArenaControls();
     $('#arena-status').textContent = desktop ? 'Nothing is sent until you confirm each request.' : 'Arena API requests require the desktop app. Browser use and pasted-change review remain available.';
@@ -542,6 +544,55 @@ export class Workbench {
       if (desktop) await openUrl(url);
       else if (!window.open(url, '_blank', 'noopener,noreferrer')) this.host.toast(`Open this address in your browser: ${url}`);
     } catch { this.host.toast(`Could not open a browser. Open this address manually: ${url}`); }
+  }
+  private setArenaPanel(panel: 'browser' | 'api'): void {
+    $('#arena-browser-section').hidden = panel !== 'browser';
+    $('#arena-api-section').hidden = panel !== 'api';
+    $('#arena-browser-tab').setAttribute('aria-pressed', String(panel === 'browser'));
+    $('#arena-api-tab').setAttribute('aria-pressed', String(panel === 'api'));
+  }
+  private updateBrowserWarning(): void {
+    const findings = findPotentialSecrets($<HTMLTextAreaElement>('#arena-browser-preview').value);
+    const warning = $('#arena-browser-warning');
+    warning.hidden = findings.length === 0;
+    warning.textContent = findings.length ? `Possible sensitive content: ${findings.join(', ')}. This check can miss secrets or flag harmless text. Review before copying.` : '';
+  }
+  private captureBrowserSelection(): void {
+    try {
+      const target = this.host.captureSelection();
+      const prompt = buildBrowserPrompt($<HTMLTextAreaElement>('#arena-browser-instruction').value, target.original);
+      this.browserTarget = target;
+      $<HTMLTextAreaElement>('#arena-browser-preview').value = prompt;
+      $('#arena-browser-status').textContent = `${target.original.length.toLocaleString()} selected characters prepared. Nothing has been copied or sent.`;
+    } catch (error) {
+      this.browserTarget = null;
+      $<HTMLTextAreaElement>('#arena-browser-preview').value = '';
+      $('#arena-browser-status').textContent = this.error(error);
+    }
+    this.updateBrowserWarning();
+  }
+  private async copyBrowserPrompt(): Promise<void> {
+    const preview = $<HTMLTextAreaElement>('#arena-browser-preview');
+    if (!preview.value.trim()) { $('#arena-browser-status').textContent = 'Capture a selection or enter a prompt first.'; return; }
+    if (this.browserTarget && !this.host.targetIsCurrent(this.browserTarget)) {
+      $('#arena-browser-status').textContent = 'The captured document changed or was closed. Capture the selection again.'; return;
+    }
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(preview.value);
+      $('#arena-browser-status').textContent = 'Copied. Paste it into Arena in your browser; other apps may access the clipboard.';
+    } catch {
+      preview.focus(); preview.select();
+      $('#arena-browser-status').textContent = 'Clipboard unavailable. Press Ctrl+C to copy the selected preview manually.';
+    }
+  }
+  private reviewBrowserPaste(): void {
+    const target = this.browserTarget ?? undefined;
+    if (target && !this.host.targetIsCurrent(target)) {
+      $('#arena-browser-status').textContent = 'The captured document changed or was closed. Capture the selection again before reviewing.'; return;
+    }
+    $<HTMLDialogElement>('#arena-dialog').close();
+    this.openReview(target);
   }
   private captureArena(): void {
     try {
@@ -574,7 +625,7 @@ export class Workbench {
     $('#arena-send').textContent = compare ? 'Compare two models' : 'Send to Arena';
   }
   private setArenaBusy(busy: boolean): void {
-    for (const selector of ['#arena-key', '#arena-mode', '#arena-model', '#arena-model-second', '#arena-compare', '#arena-instruction', '#arena-capture', '#arena-send'] as const) {
+    for (const selector of ['#arena-key', '#arena-mode', '#arena-model', '#arena-model-second', '#arena-compare', '#arena-instruction', '#arena-capture', '#arena-send', '#arena-browser-tab', '#arena-api-tab'] as const) {
       $<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement>(selector).disabled = busy;
     }
     $('#arena-cancel').hidden = !busy;
@@ -702,7 +753,12 @@ export class Workbench {
     $('#arena-open-browser').addEventListener('click', () => { void this.external(ARENA_WEBSITE); });
     $('#arena-open-keys').addEventListener('click', () => { void this.external(ARENA_KEYS_URL); });
     $('#arena-open-privacy').addEventListener('click', () => { void this.external(ARENA_PRIVACY_URL); });
-    $('#arena-review-paste').addEventListener('click', () => { $<HTMLDialogElement>('#arena-dialog').close(); this.openReview(); });
+    $('#arena-browser-tab').addEventListener('click', () => this.setArenaPanel('browser'));
+    $('#arena-api-tab').addEventListener('click', () => this.setArenaPanel('api'));
+    $('#arena-browser-capture').addEventListener('click', () => this.captureBrowserSelection());
+    $('#arena-browser-copy').addEventListener('click', () => { void this.copyBrowserPrompt(); });
+    $('#arena-browser-preview').addEventListener('input', () => this.updateBrowserWarning());
+    $('#arena-review-paste').addEventListener('click', () => this.reviewBrowserPaste());
     $('#arena-capture').addEventListener('click', () => this.captureArena());
     for (const selector of ['#arena-key', '#arena-model', '#arena-model-second', '#arena-instruction']) {
       $(selector).addEventListener('input', () => { this.clearArenaResults(); this.updateSensitiveWarning(); });
@@ -715,11 +771,15 @@ export class Workbench {
     $('#arena-review-1').addEventListener('click', () => this.reviewArenaResult(0));
     $('#arena-review-2').addEventListener('click', () => this.reviewArenaResult(1));
     $('#arena-dialog').addEventListener('close', () => {
-      this.arenaController?.abort(); this.arenaController = null; this.arenaTarget = null;
+      this.arenaController?.abort(); this.arenaController = null; this.arenaTarget = null; this.browserTarget = null;
       this.setArenaBusy(false); this.clearArenaResults();
       $<HTMLInputElement>('#arena-key').value = '';
       $<HTMLTextAreaElement>('#arena-selection').value = '';
       $<HTMLTextAreaElement>('#arena-instruction').value = '';
+      $<HTMLTextAreaElement>('#arena-browser-instruction').value = '';
+      $<HTMLTextAreaElement>('#arena-browser-preview').value = '';
+      $('#arena-browser-status').textContent = 'Nothing is copied or sent automatically.';
+      this.updateBrowserWarning();
       $<HTMLSelectElement>('#arena-mode').value = 'ask';
       $<HTMLInputElement>('#arena-compare').checked = false;
       this.updateArenaControls(); this.updateSensitiveWarning();

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Morrow",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "identifier": "app.morrow.editor",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -10,15 +10,73 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "label": "main", "title": "Morrow", "width": 1320, "height": 840, "minWidth": 720, "minHeight": 500, "dragDropEnabled": true }],
-    "security": { "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost; connect-src ipc: http://ipc.localhost" }
+    "windows": [
+      {
+        "label": "main",
+        "title": "Morrow",
+        "width": 1320,
+        "height": 840,
+        "minWidth": 720,
+        "minHeight": 500,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost; connect-src ipc: http://ipc.localhost; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"],
-    "fileAssociations": [{ "ext": ["txt", "md", "log", "py", "js", "ts", "json", "html", "css", "rs", "go", "java", "cpp", "c", "cs", "yaml", "yml", "toml", "xml", "sh", "ps1"], "name": "Text and source files", "description": "Open with Morrow", "role": "Editor" }],
-    "windows": { "webviewInstallMode": { "type": "downloadBootstrapper" } }
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "txt",
+          "md",
+          "log",
+          "py",
+          "js",
+          "ts",
+          "json",
+          "html",
+          "css",
+          "rs",
+          "go",
+          "java",
+          "cpp",
+          "c",
+          "cs",
+          "yaml",
+          "yml",
+          "toml",
+          "xml",
+          "sh",
+          "ps1"
+        ],
+        "name": "Text and source files",
+        "description": "Open with Morrow",
+        "role": "Editor"
+      }
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
   },
-  "plugins": { "fs": { "requireLiteralLeadingDot": false }, "http": { "scopeRedirects": true } }
+  "plugins": {
+    "fs": {
+      "requireLiteralLeadingDot": false
+    },
+    "http": {
+      "scopeRedirects": true
+    }
+  }
 }

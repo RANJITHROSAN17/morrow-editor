@@ -15,7 +15,7 @@ async function fresh(page: import('@playwright/test').Page) {
 test('examples are editable, syntax-highlighted, and have a large language selector', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', (e) => errors.push(e.message));
   await fresh(page);
-  await expect(page.getByText('This is an example file, not saved on your computer.')).toBeVisible();
+  await expect(page.getByText('This example isn’t saved on your computer.')).toBeVisible();
   await expect(page.locator('.cm-content')).toContainText('class Note');
   await expect(page.locator('#language')).toHaveValue('__auto__');
   await expect(page.locator('#status-language')).toHaveText('Python');

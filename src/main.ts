@@ -747,7 +747,7 @@ class MorrowApp {
       case 'settings': this.showDialog('settings-dialog'); break;
       case 'shortcuts': this.showDialog('help-dialog'); break;
       case 'ai': this.toggleAiPanel(); break;
-      case 'about': await this.confirm('A little space for big ideas.', `Morrow 0.3.0 is an open-source text and code editor. Your files stay yours. This is an early preview; save important work regularly.`, [{ id: 'ok', label: 'Sounds good', style: 'primary' }], 'ABOUT MORROW'); break;
+      case 'about': await this.confirm('A little space for big ideas.', `Morrow 0.4.0 is an open-source text and code editor. Your files stay yours. This is an early preview; save important work regularly.`, [{ id: 'ok', label: 'Sounds good', style: 'primary' }], 'ABOUT MORROW'); break;
     }
   }
 

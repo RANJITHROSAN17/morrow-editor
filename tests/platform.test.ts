@@ -2,11 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke: vi.fn() }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn(), save: vi.fn() }));
-vi.mock('@tauri-apps/plugin-fs', () => ({ readFile: vi.fn(), stat: vi.fn() }));
 
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { readFile, stat } from '@tauri-apps/plugin-fs';
 import { MAX_FILE_BYTES } from '../src/encoding';
 import { collectOpenedFiles, pickFiles, writeTo, ExternalChangeError } from '../src/platform';
 
@@ -15,25 +13,28 @@ beforeEach(() => { vi.resetAllMocks(); });
 describe('independent file opening', () => {
   it('opens the valid native files and reports each unreadable or oversized item', async () => {
     vi.mocked(open).mockResolvedValue(['C:\\work\\one.txt', 'C:\\work\\huge.log', 'C:\\work\\locked.txt', 'C:\\work\\two.txt']);
-    vi.mocked(stat).mockImplementation(async (path) => {
-      if (String(path).endsWith('locked.txt')) throw new Error('Permission denied');
-      return { isFile: true, size: String(path).endsWith('huge.log') ? MAX_FILE_BYTES + 1 : 5 } as Awaited<ReturnType<typeof stat>>;
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+      expect(command).toBe('workspace_read_file');
+      const { path, maxBytes } = args as { path: string; maxBytes: number };
+      expect(maxBytes).toBe(MAX_FILE_BYTES);
+      if (path.endsWith('locked.txt')) throw new Error('Permission denied');
+      if (path.endsWith('huge.log')) throw new Error('File exceeds the 20 MiB limit for this operation.');
+      return new TextEncoder().encode(path.endsWith('one.txt') ? 'first' : 'other').buffer;
     });
-    vi.mocked(readFile).mockImplementation(async (path) => new TextEncoder().encode(String(path).endsWith('one.txt') ? 'first' : 'other'));
 
     const result = await pickFiles();
     expect(result.files.map((file) => file.name)).toEqual(['one.txt', 'two.txt']);
     expect(result.failures).toEqual([
-      { name: 'huge.log', message: 'This file is larger than the 20 MiB safety limit.' },
+      { name: 'huge.log', message: 'File exceeds the 20 MiB limit for this operation.' },
       { name: 'locked.txt', message: 'Permission denied' },
     ]);
-    expect(readFile).toHaveBeenCalledTimes(2);
+    expect(invoke).toHaveBeenCalledTimes(4);
   });
 
   it('returns no files and no failures when the native dialog is cancelled', async () => {
     vi.mocked(open).mockResolvedValue(null);
     expect(await pickFiles()).toEqual({ files: [], failures: [] });
-    expect(stat).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   it('continues after a loader throws and processes items sequentially', async () => {
