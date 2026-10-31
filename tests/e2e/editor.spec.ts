@@ -9,6 +9,7 @@ async function fresh(page: import('@playwright/test').Page) {
   });
   await page.goto('/');
   await expect(page.locator('.cm-content')).toBeVisible();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
 }
 
 test('examples are editable, syntax-highlighted, and have a large language selector', async ({ page }) => {
@@ -149,6 +150,7 @@ test('closing after an asynchronous save never discards edits made while saving'
   });
   await page.goto('/');
   await expect(page.locator('.cm-content')).toBeVisible();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   await page.keyboard.press('Control+n');
   await page.keyboard.insertText('first version');
   await page.getByRole('button', { name: 'Close Untitled' }).click();
@@ -162,4 +164,60 @@ test('closing after an asynchronous save never discards edits made while saving'
   await expect(page.locator('.cm-content')).toContainText('first version plus later edits');
   await expect(page.locator('#toolbar-dirty')).toBeVisible();
   await expect(page.locator('#toast')).toContainText('changed while saving');
+});
+
+test('browser Save As recognizes different handles for the same file and retains conflict checks', async ({ page }) => {
+  await page.addInitScript(() => {
+    const win = window as Window & { __externalEdit?: () => void; __writes?: number; __diskText?: () => string };
+    let text = 'original'; win.__writes = 0;
+    const makeHandle = () => ({
+      kind: 'file', name: 'note.txt', identity: 'same-file',
+      getFile: async () => new File([text], 'note.txt'),
+      isSameEntry: async (other: { identity?: string }) => other.identity === 'same-file',
+      createWritable: async () => ({ write: async () => { win.__writes!++; }, close: async () => {}, abort: async () => {} }),
+    });
+    const opened = makeHandle(), reselected = makeHandle();
+    Object.defineProperty(window, 'showOpenFilePicker', { value: async () => [opened] });
+    Object.defineProperty(window, 'showSaveFilePicker', { value: async () => reselected });
+    win.__externalEdit = () => { text = 'changed externally'; };
+    win.__diskText = () => text;
+  });
+  await page.goto('/');
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
+  await page.keyboard.press('Control+o');
+  await expect(page.locator('#breadcrumb-file')).toHaveText('note.txt');
+  await page.locator('.cm-content').click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(' edited');
+  await page.evaluate(() => (window as Window & { __externalEdit?: () => void }).__externalEdit?.());
+  await page.keyboard.press('Control+Shift+s');
+  await expect(page.getByRole('heading', { name: 'File changed on disk' })).toBeVisible();
+  await page.locator('#confirm-actions').getByRole('button', { name: 'Cancel' }).click();
+  expect(await page.evaluate(() => (window as Window & { __writes?: number }).__writes)).toBe(0);
+  expect(await page.evaluate(() => (window as Window & { __diskText?: () => string }).__diskText?.())).toBe('changed externally');
+  await expect(page.locator('#toolbar-dirty')).toBeVisible();
+});
+
+test('startup prevents actions until asynchronous recovery has initialized the editor', async ({ page }) => {
+  await page.addInitScript(() => {
+    const win = window as Window & { __releaseStartup?: () => void; __opened?: boolean };
+    const originalOpen = indexedDB.open.bind(indexedDB);
+    Object.defineProperty(indexedDB, 'open', { value: (...args: Parameters<IDBFactory['open']>) => {
+      const request = originalOpen(...args);
+      Object.defineProperty(request, 'onsuccess', { configurable: true, set: (listener: (event: Event) => void) => {
+        request.addEventListener('success', (event) => { win.__releaseStartup = () => listener.call(request, event); }, { once: true });
+      } });
+      return request;
+    } });
+    Object.defineProperty(window, 'showOpenFilePicker', { value: async () => { win.__opened = true; return []; } });
+  });
+  await page.goto('/');
+  await expect(page.locator('#startup-status')).toHaveText('Starting Morrow…');
+  await expect(page.locator('#app')).toHaveAttribute('inert', '');
+  await page.locator('[data-action="open"]').first().dispatchEvent('click');
+  expect(await page.evaluate(() => (window as Window & { __opened?: boolean }).__opened)).toBeUndefined();
+  await expect.poll(() => page.evaluate(() => typeof (window as Window & { __releaseStartup?: () => void }).__releaseStartup)).toBe('function');
+  await page.evaluate(() => (window as Window & { __releaseStartup?: () => void }).__releaseStartup?.());
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
+  await expect(page.locator('#startup-status')).toBeHidden();
+  await page.getByRole('button', { name: /Open a file/ }).click();
+  await expect.poll(() => page.evaluate(() => (window as Window & { __opened?: boolean }).__opened)).toBe(true);
 });

@@ -119,10 +119,14 @@ export async function writeTo(ref: FileRef, bytes: Uint8Array, name: string, exp
   const digest = await sha256(bytes);
   if (ref.kind === 'native') {
     try {
-      // Raw IPC avoids serialising large files as JSON. Header values must be ASCII.
+      // Raw IPC avoids serialising large files as JSON. WebView2 can drop empty
+      // headers, so use a non-empty, strictly validated protocol sentinel.
+      // "absent" means a new destination must not already exist, not permission
+      // to replace an unverified file. Both sides validate this metadata.
+      if (expectedHash !== null && !/^[0-9a-f]{64}$/u.test(expectedHash)) throw new Error('Invalid saved file version.');
       await invoke('safe_write', bytes, { headers: {
         'x-morrow-path': encodeURIComponent(ref.path),
-        'x-morrow-expected': expectedHash || '',
+        'x-morrow-expected': expectedHash ?? 'absent',
         'x-morrow-force': force ? '1' : '0',
       } });
     } catch (error) {

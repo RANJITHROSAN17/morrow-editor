@@ -4,10 +4,11 @@ vi.mock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke: vi.fn() })
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn(), save: vi.fn() }));
 vi.mock('@tauri-apps/plugin-fs', () => ({ readFile: vi.fn(), stat: vi.fn() }));
 
+import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile, stat } from '@tauri-apps/plugin-fs';
 import { MAX_FILE_BYTES } from '../src/encoding';
-import { collectOpenedFiles, pickFiles } from '../src/platform';
+import { collectOpenedFiles, pickFiles, writeTo, ExternalChangeError } from '../src/platform';
 
 beforeEach(() => { vi.resetAllMocks(); });
 
@@ -47,5 +48,42 @@ describe('independent file opening', () => {
     expect(calls).toEqual(['start:a', 'end:a', 'start:bad', 'end:bad', 'start:c', 'end:c']);
     expect(result.files.map((file) => file.name)).toEqual(['a', 'c']);
     expect(result.failures).toEqual([{ name: 'bad', message: 'read failed' }]);
+  });
+});
+
+describe('native save IPC safety metadata', () => {
+  const ref = { kind: 'native', path: 'C:\\notes\\draft 📝.txt' } as const;
+  const bytes = new TextEncoder().encode('new text\r\n');
+
+  it('sends a nonempty absent sentinel for a new destination', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    const result = await writeTo(ref, bytes, 'draft 📝.txt', null);
+    expect(result).toMatch(/^[0-9a-f]{64}$/u);
+    expect(invoke).toHaveBeenCalledWith('safe_write', bytes, { headers: {
+      'x-morrow-path': encodeURIComponent(ref.path),
+      'x-morrow-expected': 'absent',
+      'x-morrow-force': '0',
+    } });
+  });
+
+  it('sends a validated opened-file hash, and force only when explicitly requested', async () => {
+    const hash = 'a'.repeat(64);
+    await writeTo(ref, bytes, 'draft.txt', hash);
+    expect(invoke).toHaveBeenLastCalledWith('safe_write', bytes, { headers: {
+      'x-morrow-path': encodeURIComponent(ref.path), 'x-morrow-expected': hash, 'x-morrow-force': '0',
+    } });
+    await writeTo(ref, bytes, 'draft.txt', hash, true);
+    expect(invoke).toHaveBeenLastCalledWith('safe_write', bytes, { headers: {
+      'x-morrow-path': encodeURIComponent(ref.path), 'x-morrow-expected': hash, 'x-morrow-force': '1',
+    } });
+  });
+
+  it('rejects invalid version metadata before IPC and translates conflict errors', async () => {
+    for (const invalid of ['', 'absent', 'not-a-hash', 'A'.repeat(64)]) {
+      await expect(writeTo(ref, bytes, 'draft.txt', invalid)).rejects.toThrow(/Invalid saved file version/);
+    }
+    expect(invoke).not.toHaveBeenCalled();
+    vi.mocked(invoke).mockRejectedValue('MORROW_FILE_CHANGED: destination already exists');
+    await expect(writeTo(ref, bytes, 'draft.txt', null)).rejects.toBeInstanceOf(ExternalChangeError);
   });
 });
