@@ -1,6 +1,5 @@
 import { isTauri, invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { readFile, stat } from '@tauri-apps/plugin-fs';
 import { MAX_FILE_BYTES, sha256 } from './encoding';
 
 export const desktop = isTauri();
@@ -21,10 +20,10 @@ function checkSize(size: number): void {
 }
 
 export async function readNative(path: string): Promise<OpenedFile> {
-  const info = await stat(path);
-  if (!info.isFile) throw new Error('Only individual text files can be opened.');
-  checkSize(info.size);
-  const bytes = await readFile(path);
+  // Native code enforces scope, no-follow and the size bound before bytes cross IPC,
+  // even if a file grows between metadata inspection and the actual read.
+  const data = await invoke<ArrayBuffer>('workspace_read_file', { path, maxBytes: MAX_FILE_BYTES });
+  const bytes = new Uint8Array(data);
   checkSize(bytes.length);
   return { name: fileName(path), bytes, ref: { kind: 'native', path } };
 }

@@ -200,6 +200,9 @@ async fn workspace_list_directory(app: tauri::AppHandle, path: String) -> Result
 #[tauri::command]
 async fn workspace_read_file(app: tauri::AppHandle, path: String, max_bytes: usize) -> Result<tauri::ipc::Response, String> {
     let path = PathBuf::from(path);
+    if !path.is_absolute() || path.components().any(|part| matches!(part, std::path::Component::ParentDir)) {
+        return Err("Invalid file path.".into());
+    }
     if !app.fs_scope().is_allowed(&path) { return Err("This file has not been selected for access in Morrow.".into()); }
     let bytes = tauri::async_runtime::spawn_blocking(move || bounded_read(&path, max_bytes)).await.map_err(|err| format!("File task failed: {err}"))??;
     Ok(tauri::ipc::Response::new(bytes))
@@ -302,10 +305,29 @@ fn fit_initial_window(window: &tauri::WebviewWindow) {
     }
 }
 
+/// Keep the privileged editor webview on bundled app origins. The explicit dev
+/// origin is enabled only in debug builds; external websites open in a browser.
+fn trusted_editor_navigation(url: &tauri::Url) -> bool {
+    if !url.username().is_empty() || url.password().is_some() { return false; }
+    match (url.scheme(), url.host_str()) {
+        ("tauri", Some("localhost")) => true,
+        ("http" | "https", Some("tauri.localhost")) => url.port().is_none(),
+        ("http", Some("localhost")) if cfg!(debug_assertions) => url.port() == Some(1420),
+        _ => false,
+    }
+}
+
+fn editor_navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("editor-navigation-guard")
+        .on_navigation(|webview, url| webview.label() != "main" || trusted_editor_navigation(url))
+        .build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(LaunchQueue::default())
+        .plugin(editor_navigation_guard())
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             collect_launch_files(app, args, &cwd);
             if let Some(window) = app.get_webview_window("main") {
@@ -333,6 +355,42 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn editor_navigation_rejects_remote_and_deceptive_origins() {
+        for allowed in ["tauri://localhost/index.html", "http://tauri.localhost/index.html", "https://tauri.localhost/index.html"] {
+            assert!(trusted_editor_navigation(&allowed.parse().unwrap()), "blocked bundled origin {allowed}");
+        }
+        for denied in ["https://arena.ai/agent", "https://tauri.localhost.evil.invalid/", "http://tauri.localhost:8080/", "javascript:alert(1)", "file:///tmp/file", "http://localhost:9999/"] {
+            assert!(!trusted_editor_navigation(&denied.parse().unwrap()), "allowed foreign origin {denied}");
+        }
+        assert_eq!(trusted_editor_navigation(&"http://localhost:1420/".parse().unwrap()), cfg!(debug_assertions));
+    }
+    #[test]
+    fn ipc_manifest_allows_only_the_local_main_webview() {
+        use tauri::test::{get_ipc_response, mock_builder, INVOKE_KEY};
+        use tauri::webview::InvokeRequest;
+        let app = mock_builder()
+            .manage(LaunchQueue::default())
+            .invoke_handler(tauri::generate_handler![take_launch_files])
+            .build(tauri::generate_context!())
+            .expect("mock app should load the real generated capability manifest");
+        let main = app.get_webview_window("main").unwrap_or_else(||
+            tauri::WebviewWindowBuilder::new(&app, "main", Default::default()).build().unwrap());
+        let other = tauri::WebviewWindowBuilder::new(&app, "untrusted-local", Default::default()).build().unwrap();
+        let origin = if cfg!(windows) { "http://tauri.localhost" } else { "tauri://localhost" };
+        let request = |url: &str| InvokeRequest {
+            cmd: "take_launch_files".into(),
+            callback: tauri::ipc::CallbackFn(0),
+            error: tauri::ipc::CallbackFn(1),
+            url: url.parse().unwrap(),
+            body: tauri::ipc::InvokeBody::default(),
+            headers: Default::default(),
+            invoke_key: INVOKE_KEY.to_string(),
+        };
+        assert!(get_ipc_response(&main, request(origin)).is_ok(), "main local editor must retain its permitted command");
+        assert!(get_ipc_response(&main, request("https://arena.ai/agent")).is_err(), "remote Arena origin must not reach native IPC");
+        assert!(get_ipc_response(&other, request(origin)).is_err(), "another local webview must not inherit main's command permission");
+    }
     #[test]
     fn initial_geometry_uses_monitor_work_area_and_decorations() {
         // The saved Windows VM case: outer window 1044x788, work area 1024x720.

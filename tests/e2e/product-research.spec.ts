@@ -65,6 +65,7 @@ test('Arena highlights common credential patterns locally without revealing matc
   await page.keyboard.press('Control+a');
   await page.locator('[data-menu="edit"]').click();
   await page.locator('[data-menu-panel="edit"] [data-action="arena"]').click();
+  await page.getByRole('button', { name: /API key Optional desktop integration/ }).click();
   await page.getByRole('button', { name: 'Capture selection' }).click();
   const warning = page.locator('#arena-sensitive-warning');
   await expect(warning).toBeVisible();

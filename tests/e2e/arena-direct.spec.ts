@@ -51,6 +51,7 @@ test('two-model questions require consent and render untrusted answers as inert 
   page.on('request', (request) => { if (request.url().includes('arena.ai')) external.push(request.url()); });
   await mockDesktop(page);
   await page.getByRole('button', { name: 'Open Arena assistant' }).click();
+  await page.getByRole('button', { name: /API key Optional desktop integration/ }).click();
   await page.locator('#arena-key').fill('synthetic-test-key');
   await page.locator('#arena-model').fill('model-one');
   await page.locator('#arena-instruction').fill('Explain this concept');
@@ -90,6 +91,7 @@ test('an Arena edit is applied only after a separate diff review and remains und
   await mockDesktop(page);
   await page.locator('.cm-content').click(); await page.keyboard.press('Control+Home'); await page.keyboard.press('Shift+End');
   await page.getByRole('button', { name: 'Open Arena assistant' }).click();
+  await page.getByRole('button', { name: /API key Optional desktop integration/ }).click();
   await page.locator('#arena-key').fill('synthetic-test-key');
   await page.locator('#arena-model').fill('model-one');
   await page.locator('#arena-mode').selectOption('edit');

@@ -1,6 +1,6 @@
 [package]
 name = "morrow-editor"
-version = "0.3.0"
+version = "0.4.0"
 description = "A small, local-first text and code editor"
 authors = ["Morrow contributors"]
 edition = "2021"
@@ -28,6 +28,9 @@ percent-encoding = "2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
 
 [profile.release]
 codegen-units = 1

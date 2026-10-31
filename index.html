@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#161f1e" />
+  <meta name="theme-color" content="#141720" />
   <title>Morrow — text, without the noise</title>
 </head>
 <body>
@@ -29,10 +29,11 @@
         <button data-action="shortcuts" role="menuitem">Keyboard shortcuts</button><button data-action="about" role="menuitem">About Morrow</button>
       </div></div>
     </nav>
+    <button class="command-shortcut" data-action="quick-open" aria-label="Quick open files" title="Quick open (Ctrl+P)"><span data-icon="search"></span><span>Jump to a file</span><kbd>Ctrl P</kbd></button>
     <div class="top-actions">
       <button class="icon-button top-search" data-action="find" title="Find in file (Ctrl+F)" aria-label="Find in file" data-icon="search"></button>
       <span class="top-separator"></span>
-      <button class="arena-top-button" data-action="arena" aria-label="Open Arena assistant" title="Ask or compare Arena models"><span data-icon="sparkle"></span><span>Arena</span></button>
+      <button class="arena-top-button" data-action="arena" aria-label="Open Arena assistant" title="Open Arena website or optional API"><span data-icon="sparkle"></span><span>Arena</span></button>
       <button class="ai-top-button" data-action="ai" aria-label="AI suggestions settings"><span data-icon="sparkle"></span><span>AI suggestions</span><span class="ai-state" id="ai-top-state">OFF</span></button>
       <button class="icon-button" data-action="settings" title="Settings (Ctrl+,)" aria-label="Settings" data-icon="settings"></button>
     </div>
@@ -40,7 +41,7 @@
   <div class="storage-warning" id="storage-warning" role="alert" hidden><span id="storage-warning-text"></span><button id="retry-recovery-cleanup" class="storage-retry" hidden>Retry removal</button></div>
   <div class="body-layout">
     <aside class="sidebar" id="sidebar" aria-label="Workspace">
-      <div class="sidebar-heading"><span>YOUR WORKSPACE</span><button class="icon-button small" data-action="sidebar" title="Hide sidebar (Ctrl+B)" aria-label="Hide sidebar" data-icon="panel"></button></div>
+      <div class="sidebar-heading"><span>WORKSPACE</span><button class="icon-button small" data-action="sidebar" title="Hide sidebar (Ctrl+B)" aria-label="Hide sidebar" data-icon="panel"></button></div>
       <button class="new-primary" data-action="new"><span data-icon="plus"></span> New file <span class="shortcut">Ctrl N</span></button>
       <button class="sidebar-open" data-action="open"><span data-icon="folder"></span> Open a file <span class="shortcut">Ctrl O</span></button>
       <button class="sidebar-open" data-action="open-folder"><span data-icon="folder"></span> Open a folder…</button>
@@ -55,9 +56,9 @@
       <div class="sidebar-spacer"></div>
       <button class="ai-card" data-action="ai">
         <span class="ai-card-icon" data-icon="sparkle"></span>
-        <span class="ai-card-copy"><strong>A little help, if you want it.</strong><span>Local suggestions and optional Arena tools.</span><span class="ai-card-link">Explore AI <span data-icon="chevron"></span></span></span>
+        <span class="ai-card-copy"><strong>A little help, on your terms.</strong><span>Local suggestions and optional Arena tools.</span><span class="ai-card-link">Explore AI <span data-icon="chevron"></span></span></span>
       </button>
-      <div class="privacy-foot"><span data-icon="lock"></span><span><strong>Made for your peace of mind</strong><small>Your files, your choices.</small></span></div>
+      <div class="privacy-foot"><span data-icon="lock"></span><span><strong>A calmer place to create</strong><small>Your files, your choices.</small></span></div>
     </aside>
     <main class="main" id="main">
       <div class="tabs-row"><button class="icon-button show-sidebar" id="show-sidebar" data-action="sidebar" aria-label="Show sidebar" title="Show sidebar" data-icon="panel" hidden></button><div class="tabs" id="tabs" role="tablist" aria-label="Open files"></div><button class="icon-button tab-add" data-action="new" title="New file (Ctrl+N)" aria-label="New file" data-icon="plus"></button><div class="tabs-fill"></div><button class="icon-button tab-tool" data-action="save" title="Save (Ctrl+S)" aria-label="Save file" data-icon="save"></button></div>
@@ -65,7 +66,7 @@
         <div class="breadcrumb"><span class="breadcrumb-root" id="breadcrumb-root">YOUR FILES</span><span class="crumb-sep" data-icon="chevron"></span><span class="breadcrumb-file" id="breadcrumb-file">Untitled</span><span class="toolbar-dirty" id="toolbar-dirty" hidden>Unsaved changes</span></div>
         <div class="document-actions"><button class="preview-toggle" data-action="preview-markdown" id="preview-button" title="Preview the active document as Markdown" aria-label="Toggle Markdown preview" aria-pressed="false"><span data-icon="preview"></span><span>Preview</span></button><label class="language-label" title="Choose a syntax highlighting language"><span class="language-dot"></span><select id="language" aria-label="Syntax language"></select></label><button class="icon-button" data-action="wrap" id="wrap-button" title="Toggle word wrap (Alt+Z)" aria-label="Toggle word wrap" aria-pressed="false" data-icon="wrap"></button></div>
       </div>
-      <div class="example-banner" id="example-banner"><span class="example-spark" data-icon="sparkle"></span><span><strong>A little something to explore.</strong> This is an example file, not saved on your computer.</span><button data-action="new">Start fresh <span data-icon="chevron"></span></button></div>
+      <div class="example-banner" id="example-banner"><span class="example-spark" data-icon="sparkle"></span><span><strong>Welcome to Morrow.</strong> This example isn’t saved on your computer.</span><button data-action="new">Start fresh <span data-icon="chevron"></span></button></div>
       <div class="editor-shell" id="editor-shell">
         <div class="editor-columns" id="editor-columns">
           <div id="editor" class="editor" aria-label="Text editor"></div>
@@ -125,8 +126,23 @@
 <dialog id="review-dialog" class="modal review-modal" aria-labelledby="review-title"><div class="modal-header"><div><span class="eyebrow">REVIEW BEFORE APPLYING</span><h2 id="review-title">Preview a change</h2></div><button class="icon-button" data-close-dialog="review-dialog" aria-label="Close change review" data-icon="close"></button></div><p class="modal-intro" id="review-target"></p><div class="review-editors"><label>Selected text <textarea id="review-before" class="text-area code-area" readonly></textarea></label><label>Replacement <textarea id="review-after" class="text-area code-area" placeholder="Paste the replacement text here" spellcheck="false"></textarea></label></div><p class="dialog-status" id="review-status" role="status">The replacement is applied literally; Markdown fences are not removed.</p><div class="diff-heading">CHANGE PREVIEW <span>− removed &nbsp; + added</span></div><pre class="review-diff" id="review-diff" aria-label="Change preview"></pre><div class="modal-actions"><button data-close-dialog="review-dialog">Reject</button><button id="review-apply" class="primary" disabled>Apply to selection</button></div><p class="modal-footnote">Applies to the editor only. Undo is available; save explicitly when ready.</p></dialog>
 <dialog id="arena-dialog" class="modal arena-studio-modal" aria-labelledby="arena-title">
   <div class="modal-header"><div><span class="eyebrow">YOUR EDITOR · YOUR CHOICE</span><h2 id="arena-title">Arena &amp; change review</h2></div><button class="icon-button" data-close-dialog="arena-dialog" aria-label="Close Arena tools" data-icon="close"></button></div>
-  <div class="arena-hero"><div><span class="arena-kicker">ARENA, IN MORROW</span><strong>Ask. Compare. Create with care.</strong><p>Send a question or propose an edit directly from your editor. Nothing is sent automatically; suggestions never change files by themselves.</p></div><span class="arena-hero-badge">OPTIONAL CLOUD</span></div>
-  <section class="arena-api" id="arena-api-section" aria-label="Arena API assistant">
+  <div class="arena-hero"><div><span class="arena-kicker">A LITTLE HELP, ON YOUR TERMS</span><strong>Great ideas deserve a second look.</strong><p>Use the Arena website or an optional API key. You choose what to share, and review every edit before it touches your file.</p></div><span class="arena-hero-badge">YOU'RE IN CONTROL</span></div>
+  <div class="arena-mode-switch" role="group" aria-label="Choose how to use Arena">
+    <button type="button" id="arena-browser-tab" aria-pressed="true"><span data-icon="globe"></span><span><strong>Website</strong><small>Sign in with your browser</small></span></button>
+    <button type="button" id="arena-api-tab" aria-pressed="false"><span data-icon="sparkle"></span><span><strong>API key</strong><small>Optional desktop integration</small></span></button>
+  </div>
+  <section class="arena-browser" id="arena-browser-section" aria-label="Arena website workflow">
+    <div class="arena-browser-heading"><div><span class="arena-section-kicker">THE BROWSER WORKFLOW</span><h3>Take your selection to Arena.</h3><p>Sign in normally in your own browser. Morrow never shares your session or sends text automatically.</p></div><button class="primary-action" id="arena-open-browser">Open Arena in browser <span data-icon="external"></span></button></div>
+    <div class="arena-steps" aria-label="Workflow steps"><span><b>1</b> Select &amp; prepare</span><span><b>2</b> Copy to Arena</span><span><b>3</b> Review the reply</span></div>
+    <label class="field-label" for="arena-browser-instruction">Instruction <span>optional; included when you capture</span></label>
+    <textarea id="arena-browser-instruction" class="text-area arena-browser-instruction" maxlength="4000" placeholder="For example: Make this function easier to read."></textarea>
+    <div class="capture-row"><label class="field-label" for="arena-browser-preview">Prepared prompt <span>editable; review before copying</span></label><button id="arena-browser-capture" class="text-button">Capture selection</button></div>
+    <textarea id="arena-browser-preview" class="text-area code-area arena-browser-preview" maxlength="16100" placeholder="Select text in the editor first, then capture it here." spellcheck="false"></textarea>
+    <p class="arena-browser-privacy">Only the preview is copied; Morrow adds no file path or other files. Your system clipboard may be accessible to other apps. Review for secrets before pasting into Arena.</p>
+    <p class="sensitive-warning" id="arena-browser-warning" role="status" hidden></p>
+    <div class="arena-browser-actions"><button class="primary-action" id="arena-browser-copy">Copy preview</button><button class="secondary-action" id="arena-review-paste">Review a pasted change</button><p class="dialog-status" id="arena-browser-status" role="status" aria-live="polite">Nothing is copied or sent automatically.</p></div>
+  </section>
+  <section class="arena-api" id="arena-api-section" aria-label="Arena API assistant" hidden>
     <p>Requires an eligible Arena API key and enabled model. Website login is separate; free-router keys may not work in Morrow. Availability, costs, limits and data handling depend on your Arena account.</p>
     <div class="arena-links"><button id="arena-open-keys" class="inline-link">Get an API key</button><button id="arena-open-privacy" class="inline-link">Arena privacy policy</button></div>
     <div class="arena-fields">
@@ -146,7 +162,6 @@
       <article class="arena-response" id="arena-result-card-2" hidden><div class="arena-response-heading"><strong id="arena-result-model-2">Model response</strong><span>UNTRUSTED OUTPUT</span></div><label class="field-label" for="arena-response-2">Response from second model</label><textarea class="text-area code-area arena-output" id="arena-response-2" readonly></textarea><button class="outline-button" id="arena-review-2" hidden>Review this edit</button></article>
     </div>
   </section>
-  <details class="arena-browser-fallback"><summary>Prefer the Arena website?</summary><div class="arena-browser-card"><div><strong>Use Arena in your browser</strong><p>Sign in normally, copy only the text you choose, and paste a response into Morrow for review.</p></div><button class="text-button" id="arena-open-browser">Open Arena in browser</button></div><button class="outline-button" id="arena-review-paste">Review a pasted change</button></details>
 </dialog>
 <dialog id="confirm-dialog" class="modal confirm-modal"><div class="modal-header"><div><span class="eyebrow" id="confirm-eyebrow">BEFORE YOU GO</span><h2 id="confirm-title">Save changes?</h2></div><button class="icon-button" id="confirm-x" aria-label="Cancel" data-icon="close"></button></div><p class="confirm-message" id="confirm-message"></p><div class="modal-actions" id="confirm-actions"></div></dialog>
 <dialog id="open-errors-dialog" class="modal" aria-labelledby="open-errors-title"><div class="modal-header"><div><span class="eyebrow">FILE OPEN REPORT</span><h2 id="open-errors-title">Some files could not be opened</h2></div><button class="icon-button" data-close-dialog="open-errors-dialog" aria-label="Close file open report" data-icon="close"></button></div><p class="modal-intro" id="open-errors-summary"></p><ul class="open-errors-list" id="open-errors-list"></ul><div class="modal-actions"><button data-close-dialog="open-errors-dialog" class="primary">Got it</button></div></dialog>

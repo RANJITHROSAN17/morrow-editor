@@ -110,3 +110,16 @@ describe('direct Arena questions and explicit model comparison', () => {
     }
   });
 });
+
+describe('Arena website prompt preparation', () => {
+  it('includes only the explicit instruction and selected text, without paths or implicit data', async () => {
+    const { buildBrowserPrompt, ARENA_WEBSITE } = await import('../src/arena');
+    expect(ARENA_WEBSITE).toBe('https://arena.ai/agent');
+    expect(buildBrowserPrompt('  Simplify this  ', 'const n = 1;')).toBe('Instruction:\nSimplify this\n\nSelected text:\nconst n = 1;');
+    expect(buildBrowserPrompt('', 'draft')).toBe('draft');
+    expect(buildBrowserPrompt('', 'draft')).not.toContain('path');
+    expect(() => buildBrowserPrompt('x'.repeat(4001), 'draft')).toThrow(/Instruction exceeds/);
+    expect(() => buildBrowserPrompt('', '')).toThrow(/Select/);
+    expect(() => buildBrowserPrompt('', 'x'.repeat(MAX_ARENA_CONTEXT + 1))).toThrow(/Select/);
+  });
+});

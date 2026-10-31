@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 — unreleased preview
+
+- Refresh the dark and light palettes, app icon, connected tabs, editor chrome, dialogs and compact layout. Add a visible quick-open entry point and selected contrast/reduced-motion checks.
+- Make the normal-browser Arena path the default: prepare a bounded, editable prompt from an explicit selection, copy only on request, sign in externally and review the pasted response. The website is not embedded and sessions are not transferred. The separate eligible-key API is still optional.
+- Generate explicit permissions for the main bundled webview's Rust commands, deny remote editor navigation, narrow allowed external URLs, and test local versus remote IPC with Tauri's mock runtime.
+- Enforce bounded no-follow native reads for individually opened files and bound Ollama JSON/error responses. Direct links/reparse points are rejected; parent-path races and existing-file save races remain.
+- Preserve the unreleased 0.3.0 candidate's new-file save fix, multi-root workspaces, creation/search and API comparison. Consumer Windows, authenticated Arena and a complete security/accessibility audit remain unverified.
+
+
 ## 0.2.0 — 2026-10-30
 
 ### Folder, navigation and reviewed changes
