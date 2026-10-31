@@ -1,6 +1,6 @@
 # Morrow 0.4.0 design and security candidate
 
-This is an **unreleased** candidate based on local `0.3.0` (`f66feb9`), not the public `main` 0.2.0 release. The browser preview is not a Windows executable.
+This is an **unreleased** 0.4.0 preview based on `0.3.0` (`f66feb9`). As checked on 1 November 2026, both public `main` and `feature/morrow-0.4.0-design` contain the 0.4.0 files. The browser preview is not a Windows executable.
 
 ## What changed
 
@@ -14,4 +14,8 @@ This is an **unreleased** candidate based on local `0.3.0` (`f66feb9`), not the 
 
 The feature tests use synthetic text, clipboard stubs, mock filesystem handles, and mock Arena/Ollama endpoints; no actual user files, secrets or paid API calls are required. On Linux, Rust tests load the generated manifest and test that a main local mock webview can invoke a permitted command while a remote origin and another local webview cannot. The mock-runtime test is excluded on Windows after its test executable failed to start on the hosted runner with `STATUS_ENTRYPOINT_NOT_FOUND`; the Windows installed-app smoke test must separately exercise the allowed commands. This is not proof against every possible WebView or filesystem attack.
 
-A Linux Tauri development build was manually exercised with synthetic files: new-file save, opening an existing file, the fixed system-browser opener (intercepted by a test stub), and a mock Ollama check/completion. This verifies the desktop pathway on Linux, not Windows or real Arena authentication. Windows build and installed-GUI status should be reported separately from prior 0.3.0 evidence. Consumer Windows 10/11, real authenticated Arena, accessibility, scaling, performance, code signing, reparse-point edge cases, and a full security audit remain outstanding.
+On 31 October 2026 the 0.4.0 candidate passed the frontend build and 71 unit tests, plus 48 Playwright tests on Linux and on Windows. Native Rust tests passed 13 on Linux and 10 on Windows; the IPC mock case described above runs only on Linux. The missing Windows entry point was not identified.
+
+An unsigned installer was built and installed in a GitHub-hosted Windows Server 2025 VM ([test run](https://github.com/RANJITHROSAN17/morrow-editor/actions/runs/41219492278)). A targeted synthetic GUI smoke test checked new-file save, external-change conflict handling, two-root search, file creation and collision handling, compact Settings, and preparing an Arena selection. The capture harness initially marked its heuristic inconclusive; manual review of the UI Automation tree confirmed the prepared prompt matched the synthetic selection. This did not test copying or a live Arena login on Windows.
+
+A Linux Tauri development build was also exercised with synthetic files: new-file save, opening an existing file, a browser launch intercepted by a test stub, and a mock Ollama check/completion. Neither the Linux mock nor the Windows smoke test verifies a real model or an authenticated Arena response. Consumer Windows 10/11, accessibility, scaling, performance, code signing, reparse-point edge cases, and a full security audit remain outstanding.
