@@ -1,9 +1,9 @@
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { desktop, fileName } from './platform';
 import { MAX_REVIEW_CHARS, makeReviewTarget, normalizeReplacement, reviewDiff, type ReviewTarget } from './change-review';
-import { ARENA_API_ENDPOINT, ARENA_KEYS_URL, ARENA_PRIVACY_URL, ARENA_WEBSITE, MAX_ARENA_CONTEXT, buildArenaRequest, requestArena } from './arena';
+import { ARENA_API_ENDPOINT, ARENA_KEYS_URL, ARENA_PRIVACY_URL, ARENA_WEBSITE, MAX_ARENA_CONTEXT, buildArenaRequest, requestArenaBatch, type ArenaMode, type ArenaRequest } from './arena';
 import { findPotentialSecrets } from './sensitive-text';
-import { listWorkspaceDirectory, pickWorkspace, searchWorkspace, walkWorkspace, type DirectoryListing, type SearchResult, type WalkProgress, type WorkspaceDirectory, type WorkspaceFile } from './workspace';
+import { MAX_WORKSPACE_ROOTS, createWorkspaceEntry, listWorkspaceDirectory, pickWorkspace, searchWorkspace, walkWorkspace, type DirectoryListing, type NewWorkspaceEntryKind, type SearchResult, type WalkProgress, type WorkspaceDirectory, type WorkspaceFile } from './workspace';
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string): T => {
   const value = document.querySelector<T>(selector);
@@ -41,6 +41,7 @@ const COMMANDS: { label: string; action: string; shortcut?: string }[] = [
   { label: 'New file', action: 'new', shortcut: 'Ctrl+N' },
   { label: 'Open files', action: 'open', shortcut: 'Ctrl+O' },
   { label: 'Open folder', action: 'open-folder' },
+  { label: 'Add folder to workspace', action: 'add-folder' },
   { label: 'Quick open', action: 'quick-open', shortcut: 'Ctrl+P' },
   { label: 'Find in folder', action: 'find-files', shortcut: 'Ctrl+Shift+F' },
   { label: 'Go to line', action: 'goto-line', shortcut: 'Ctrl+G' },
@@ -57,11 +58,20 @@ const COMMANDS: { label: string; action: string; shortcut?: string }[] = [
   { label: 'Settings', action: 'settings', shortcut: 'Ctrl+,' },
 ];
 
+interface WorkspaceRootState {
+  id: number;
+  folder: WorkspaceDirectory;
+  listings: Map<string, DirectoryListing>;
+  expanded: Set<string>;
+  rootExpanded: boolean;
+}
+
 export class Workbench {
-  private folder: WorkspaceDirectory | null = null;
+  private roots: WorkspaceRootState[] = [];
+  private rootSequence = 0;
   private folderGeneration = 0;
-  private folderListings = new Map<string, DirectoryListing>();
-  private expanded = new Set<string>();
+  private createTarget: { root: WorkspaceRootState; parent: WorkspaceDirectory } | null = null;
+  private creating = false;
   private searchController: AbortController | null = null;
   private quickController: AbortController | null = null;
   private quickItems: QuickItem[] = [];
@@ -70,12 +80,14 @@ export class Workbench {
   private reviewTimer = 0;
   private arenaTarget: ReviewTarget | null = null;
   private arenaController: AbortController | null = null;
+  private arenaResults: ({ target: ReviewTarget | null; text: string; mode: ArenaMode } | null)[] = [];
 
   constructor(private readonly host: WorkbenchHost) { this.bind(); }
 
   async action(name: string): Promise<boolean> {
     switch (name) {
-      case 'open-folder': await this.openFolder(); return true;
+      case 'open-folder': await this.openFolder(false); return true;
+      case 'add-folder': await this.openFolder(true); return true;
       case 'find-files': this.showSearch(); return true;
       case 'quick-open': this.showQuickOpen(); return true;
       case 'goto-line': this.showGoto(); return true;
@@ -92,113 +104,234 @@ export class Workbench {
   }
   private error(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 
-  private async openFolder(): Promise<void> {
-    const choice = await this.host.confirm('Choose a folder?', 'Morrow can read files inside the folder you select, and may write there when you explicitly save. Searches stay on this device and do not change files. On desktop, selected folder access may remain in Morrow’s saved file-access scope even after the folder view is closed.', [
+  private rootLabel(root: WorkspaceRootState): string {
+    const same = this.roots.filter((item) => item.folder.name.toLocaleLowerCase() === root.folder.name.toLocaleLowerCase());
+    return same.length > 1 ? `${root.folder.name} (${same.indexOf(root) + 1})` : root.folder.name;
+  }
+
+  private async sameFolder(a: WorkspaceDirectory, b: WorkspaceDirectory): Promise<boolean> {
+    if (a.kind === 'native' && b.kind === 'native') {
+      const key = (path: string): string => {
+        const value = path.replace(/[\\/]+$/u, '');
+        // Windows paths are case-insensitive in the usual configuration; do not
+        // accidentally conflate distinct case-sensitive Unix paths in tests.
+        return /^(?:[a-z]:[\\/]|\\\\)/iu.test(path) ? value.replace(/\//gu, '\\').toLowerCase() : value;
+      };
+      return key(a.path) === key(b.path);
+    }
+    if (a.kind !== 'browser' || b.kind !== 'browser') return false;
+    if (a.handle === b.handle) return true;
+    try { return typeof a.handle.isSameEntry === 'function' && await a.handle.isSameEntry(b.handle); }
+    catch { return false; }
+  }
+
+  private invalidateWorkspaceSearch(message: string): void {
+    this.searchController?.abort(); this.searchController = null;
+    $('#workspace-search-run').removeAttribute('disabled'); $('#workspace-search-cancel').hidden = true;
+    $('#workspace-search-results').replaceChildren(); $('#workspace-search-issues').hidden = true;
+    $('#workspace-search-status').textContent = message;
+  }
+
+  private async openFolder(add: boolean): Promise<void> {
+    if (add && this.roots.length >= MAX_WORKSPACE_ROOTS) { this.host.toast(`A workspace can contain up to ${MAX_WORKSPACE_ROOTS} folders.`); return; }
+    const choice = await this.host.confirm(add ? 'Add a folder?' : 'Choose a folder?', add
+      ? 'Choose another folder to add. Morrow can read its files and may write there when you explicitly save or create an item. It does not run folder contents. Open files remain open. Desktop access to selected paths may remain in Morrow’s saved file-access scope after removal.'
+      : 'Morrow can read files inside the folder you select, and may write there when you explicitly save or create an item. Searches stay on this device and do not change files. Opening a folder replaces the current folder view but leaves open files alone. On desktop, selected folder access may remain in Morrow’s saved file-access scope after the folder view is closed.', [
       { id: 'cancel', label: 'Cancel' }, { id: 'choose', label: 'Choose folder', style: 'primary' },
     ], 'FOLDER ACCESS');
     if (choice !== 'choose') return;
     try {
       const selected = await pickWorkspace();
       if (!selected) return;
-      this.closeFolder(false);
-      this.folder = selected;
-      this.folderGeneration++;
-      $('#workspace-section').hidden = false;
-      $('#workspace-name').textContent = selected.name;
-      $('#workspace-name').title = selected.kind === 'native' ? selected.path : selected.name;
-      $('#workspace-tree-status').textContent = 'Loading folder…';
-      await this.refreshFolder();
-    } catch (error) { this.host.toast(`Could not open folder: ${this.error(error)}`); }
+      if (add) {
+        for (const existing of this.roots) {
+          if (await this.sameFolder(existing.folder, selected)) { this.host.toast('That folder is already in the workspace.'); return; }
+        }
+      } else this.closeFolder(false);
+      this.invalidateWorkspaceSearch('Workspace changed; run the search again.');
+      this.quickController?.abort(); this.quickGeneration++;
+      const root: WorkspaceRootState = { id: ++this.rootSequence, folder: selected, listings: new Map(), expanded: new Set(), rootExpanded: true };
+      this.roots.push(root);
+      const generation = ++this.folderGeneration;
+      this.updateWorkspaceHeading();
+      $('#workspace-tree-status').textContent = `Loading ${selected.name}…`;
+      const listing = await listWorkspaceDirectory(selected);
+      if (generation !== this.folderGeneration || !this.roots.includes(root)) return;
+      root.listings.set('', listing); this.renderTree();
+    } catch (error) { $('#workspace-tree-status').textContent = `Could not read folder: ${this.error(error)}`; this.host.toast(`Could not open folder: ${this.error(error)}`); }
+  }
+
+  private updateWorkspaceHeading(): void {
+    $('#workspace-section').hidden = this.roots.length === 0;
+    if (!this.roots.length) return;
+    $('#workspace-name').textContent = this.roots.length === 1 ? this.roots[0].folder.name : `WORKSPACE · ${this.roots.length} FOLDERS`;
+    $('#workspace-name').title = this.roots.map((root) => root.folder.kind === 'native' ? root.folder.path : root.folder.name).join('\n');
   }
 
   private closeFolder(showMessage = true): void {
-    this.searchController?.abort(); this.searchController = null; this.quickController?.abort();
-    $('#workspace-search-run').removeAttribute('disabled'); $('#workspace-search-cancel').hidden = true;
-    this.folderGeneration++;
-    this.folder = null;
-    this.folderListings.clear(); this.expanded.clear();
-    $('#workspace-search-results').replaceChildren();
-    $('#workspace-search-issues').hidden = true;
-    $('#workspace-search-status').textContent = '';
-    $('#workspace-section').hidden = true;
-    $('#workspace-tree').replaceChildren();
-    $('#workspace-tree-status').textContent = '';
-    if (showMessage) this.host.toast('Folder view closed. Previously granted desktop file access may still be stored.');
+    this.invalidateWorkspaceSearch(''); this.quickController?.abort(); this.quickGeneration++;
+    this.folderGeneration++; this.roots = [];
+    this.updateWorkspaceHeading();
+    $('#workspace-tree').replaceChildren(); $('#workspace-tree-status').textContent = '';
+    if (showMessage) this.host.toast('Workspace closed. Open files remain open. Previously granted desktop access may still be stored.');
+  }
+
+  private removeRoot(root: WorkspaceRootState): void {
+    if (!this.roots.includes(root)) return;
+    this.folderGeneration++; this.roots = this.roots.filter((item) => item !== root);
+    this.invalidateWorkspaceSearch('Workspace changed; run the search again.');
+    this.quickController?.abort(); this.quickGeneration++;
+    this.updateWorkspaceHeading(); this.renderTree();
+    this.host.toast('Folder removed from the workspace, not deleted. Open files remain open; desktop access may still be stored.');
   }
 
   private async refreshFolder(): Promise<void> {
-    const folder = this.folder;
-    if (!folder) return;
+    if (!this.roots.length) return;
     const generation = ++this.folderGeneration;
-    this.folderListings.clear(); this.expanded.clear();
-    $('#workspace-tree').replaceChildren();
-    $('#workspace-tree-status').textContent = 'Loading folder…';
-    try {
-      const listing = await listWorkspaceDirectory(folder);
-      if (generation !== this.folderGeneration) return;
-      this.folderListings.set('', listing);
-      this.renderTree();
-    } catch (error) {
-      if (generation === this.folderGeneration) $('#workspace-tree-status').textContent = `Could not read folder: ${this.error(error)}`;
+    this.invalidateWorkspaceSearch('Folder view refreshed; run the search again.');
+    this.quickController?.abort(); this.quickGeneration++;
+    for (const root of this.roots) { root.listings.clear(); root.expanded.clear(); root.rootExpanded = true; }
+    $('#workspace-tree').replaceChildren(); $('#workspace-tree-status').textContent = 'Loading folders…';
+    for (const root of this.roots) {
+      try {
+        const listing = await listWorkspaceDirectory(root.folder);
+        if (generation !== this.folderGeneration) return;
+        root.listings.set('', listing);
+      } catch (error) {
+        if (generation !== this.folderGeneration) return;
+        this.host.toast(`Could not refresh ${root.folder.name}: ${this.error(error)}`);
+      }
     }
+    if (generation === this.folderGeneration) this.renderTree();
   }
 
   private renderTree(): void {
     const tree = $('#workspace-tree'); tree.replaceChildren();
-    const folder = this.folder;
-    if (!folder) return;
-    let skipped = 0, truncated = false;
-    const addEntries = (parent: WorkspaceDirectory, depth: number): void => {
-      const listing = this.folderListings.get(parent.relative);
+    let skipped = 0, truncated = false, listed = 0;
+    const addEntries = (root: WorkspaceRootState, parent: WorkspaceDirectory, depth: number): void => {
+      const listing = root.listings.get(parent.relative);
       if (!listing) return;
-      skipped += listing.skippedLinks; truncated ||= listing.truncated;
+      skipped += listing.skippedLinks; truncated ||= listing.truncated; listed += listing.entries.length;
       for (const entry of listing.entries) {
         const button = element('button', 'workspace-row'); button.type = 'button';
+        button.dataset.rootId = String(root.id); button.dataset.relative = entry.relative;
         button.style.setProperty('--tree-depth', String(Math.min(depth, 20)));
-        button.title = entry.relative;
+        button.title = `${this.rootLabel(root)}/${entry.relative}`;
         const caret = element('span', 'tree-caret');
-        caret.textContent = entry.type === 'directory' ? (this.expanded.has(entry.relative) ? '▾' : '▸') : '·';
+        caret.textContent = entry.type === 'directory' ? (root.expanded.has(entry.relative) ? '▾' : '▸') : '·';
         caret.setAttribute('aria-hidden', 'true');
         const label = element('span', 'tree-label'); label.textContent = entry.name;
         button.append(caret, label);
+        const detail = this.roots.length > 1 ? `${this.rootLabel(root)}/${entry.relative}` : entry.relative;
         if (entry.type === 'directory') {
-          button.setAttribute('aria-expanded', String(this.expanded.has(entry.relative)));
-          button.setAttribute('aria-label', `${this.expanded.has(entry.relative) ? 'Collapse' : 'Expand'} folder ${entry.relative}`);
-          button.addEventListener('click', () => { void this.toggleDirectory(entry); });
+          button.setAttribute('aria-expanded', String(root.expanded.has(entry.relative)));
+          button.setAttribute('aria-label', `${root.expanded.has(entry.relative) ? 'Collapse' : 'Expand'} folder ${detail}`);
+          button.addEventListener('click', () => { void this.toggleDirectory(root, entry); });
         } else {
-          button.setAttribute('aria-label', `Open ${entry.relative}`);
+          button.setAttribute('aria-label', `Open ${detail}`);
           button.addEventListener('click', () => { void this.host.openWorkspaceFile(entry); });
         }
-        tree.append(button);
-        if (entry.type === 'directory' && this.expanded.has(entry.relative)) addEntries(entry, depth + 1);
+        if (entry.type === 'directory') {
+          const line = element('div', 'workspace-directory-line');
+          line.append(button, this.createInButton(root, entry, detail)); tree.append(line);
+        } else tree.append(button);
+        if (entry.type === 'directory' && root.expanded.has(entry.relative)) addEntries(root, entry, depth + 1);
       }
     };
-    addEntries(folder, 0);
+    for (const root of this.roots) {
+      const line = element('div', 'workspace-root-line');
+      const button = element('button', 'workspace-row workspace-root'); button.type = 'button';
+      button.dataset.rootId = String(root.id); button.dataset.relative = '';
+      button.setAttribute('aria-expanded', String(root.rootExpanded));
+      button.setAttribute('aria-label', `${root.rootExpanded ? 'Collapse' : 'Expand'} project folder ${this.rootLabel(root)}`);
+      button.title = root.folder.kind === 'native' ? root.folder.path : root.folder.name;
+      const caret = element('span', 'tree-caret'); caret.textContent = root.rootExpanded ? '▾' : '▸'; caret.setAttribute('aria-hidden', 'true');
+      const name = element('span', 'tree-label'); name.textContent = this.rootLabel(root);
+      button.append(caret, name);
+      button.addEventListener('click', () => { root.rootExpanded = !root.rootExpanded; this.renderTree(); this.focusTreeEntry(root, ''); });
+      const remove = element('button', 'workspace-root-remove'); remove.type = 'button'; remove.textContent = '×';
+      remove.title = `Remove ${this.rootLabel(root)} from workspace (does not delete files)`;
+      remove.setAttribute('aria-label', `Remove folder ${this.rootLabel(root)} from workspace`);
+      remove.addEventListener('click', () => this.removeRoot(root));
+      line.append(button, this.createInButton(root, root.folder, this.rootLabel(root)), remove); tree.append(line);
+      if (root.rootExpanded) addEntries(root, root.folder, 1);
+    }
     const messages: string[] = [];
-    if (!tree.childElementCount) messages.push('This folder is empty.');
+    if (this.roots.length && !listed && this.roots.every((root) => root.listings.has(''))) messages.push('No items in the expanded folders.');
     if (skipped) messages.push(`${skipped} link or unsupported item(s) skipped.`);
     if (truncated) messages.push('Large folder listing truncated.');
     $('#workspace-tree-status').textContent = messages.join(' ');
   }
 
-  private async toggleDirectory(directory: WorkspaceDirectory): Promise<void> {
-    if (this.expanded.has(directory.relative)) { this.expanded.delete(directory.relative); this.renderTree(); return; }
+  private async toggleDirectory(root: WorkspaceRootState, directory: WorkspaceDirectory): Promise<void> {
+    if (root.expanded.has(directory.relative)) { root.expanded.delete(directory.relative); this.renderTree(); this.focusTreeEntry(root, directory.relative); return; }
     const generation = this.folderGeneration;
-    if (!this.folderListings.has(directory.relative)) {
+    if (!root.listings.has(directory.relative)) {
       $('#workspace-tree-status').textContent = `Loading ${directory.relative}…`;
       try {
         const listing = await listWorkspaceDirectory(directory);
-        if (generation !== this.folderGeneration) return;
-        this.folderListings.set(directory.relative, listing);
+        if (generation !== this.folderGeneration || !this.roots.includes(root)) return;
+        root.listings.set(directory.relative, listing);
       } catch (error) { $('#workspace-tree-status').textContent = `Could not read ${directory.relative}: ${this.error(error)}`; return; }
     }
-    this.expanded.add(directory.relative); this.renderTree();
+    root.expanded.add(directory.relative); this.renderTree(); this.focusTreeEntry(root, directory.relative);
+  }
+
+  private focusTreeEntry(root: WorkspaceRootState, relative: string): void {
+    const rows = Array.from(document.querySelectorAll<HTMLButtonElement>('#workspace-tree .workspace-row'));
+    rows.find((row) => row.dataset.rootId === String(root.id) && row.dataset.relative === relative)?.focus();
+  }
+
+  private createInButton(root: WorkspaceRootState, parent: WorkspaceDirectory, detail: string): HTMLButtonElement {
+    const button = element('button', 'workspace-create'); button.type = 'button'; button.textContent = '+';
+    button.title = `Create a file or folder in ${detail}`;
+    button.setAttribute('aria-label', `Create a file or folder in ${detail}`);
+    button.addEventListener('click', () => this.showCreate(root, parent));
+    return button;
+  }
+
+  private showCreate(root: WorkspaceRootState, parent: WorkspaceDirectory): void {
+    if (!this.roots.includes(root)) return;
+    this.createTarget = { root, parent };
+    $('#workspace-create-location').textContent = `Create inside ${this.rootLabel(root)}${parent.relative ? `/${parent.relative}` : ''}. Existing items are never intentionally overwritten.`;
+    $<HTMLInputElement>('#workspace-create-name').value = '';
+    $<HTMLSelectElement>('#workspace-create-kind').value = 'file';
+    $('#workspace-create-status').textContent = 'Creating a file writes an empty file immediately; save edits separately.';
+    this.show('workspace-create-dialog'); $<HTMLInputElement>('#workspace-create-name').focus();
+  }
+
+  private async submitCreate(): Promise<void> {
+    const target = this.createTarget;
+    if (this.creating || !target || !this.roots.includes(target.root)) return;
+    const name = $<HTMLInputElement>('#workspace-create-name').value;
+    const kind = $<HTMLSelectElement>('#workspace-create-kind').value as NewWorkspaceEntryKind;
+    this.creating = true; $<HTMLButtonElement>('#workspace-create-submit').disabled = true; $<HTMLButtonElement>('#workspace-create-cancel').disabled = true;
+    $('#workspace-create-status').textContent = 'Creating…';
+    try {
+      const entry = await createWorkspaceEntry(target.root.folder, target.parent, name, kind);
+      if (!this.roots.includes(target.root)) { this.host.toast(`Created ${entry.name}; refresh the folder view to see it.`); return; }
+      let refreshed = false;
+      try {
+        const listing = await listWorkspaceDirectory(target.parent);
+        if (this.roots.includes(target.root)) {
+          target.root.listings.set(target.parent.relative, listing);
+          target.root.rootExpanded = true;
+          if (target.parent.relative) target.root.expanded.add(target.parent.relative);
+          this.renderTree(); refreshed = true;
+        }
+      } catch { /* The item already exists; do not imply that creation failed. */ }
+      $<HTMLDialogElement>('#workspace-create-dialog').close();
+      this.host.toast(refreshed ? `Created ${entry.name}.` : `Created ${entry.name}, but the folder view could not refresh.`);
+      if (entry.type === 'file') await this.host.openWorkspaceFile(entry);
+    } catch (error) { $('#workspace-create-status').textContent = this.error(error); }
+    finally { this.creating = false; $<HTMLButtonElement>('#workspace-create-submit').disabled = false; $<HTMLButtonElement>('#workspace-create-cancel').disabled = false; }
   }
 
   private showSearch(): void {
-    if (!this.folder) { this.host.toast('Open a folder before searching its files.'); return; }
+    if (!this.roots.length) { this.host.toast('Open a folder before searching its files.'); return; }
     this.show('workspace-search-dialog');
-    $('#workspace-search-status').textContent = `Search saved files in ${this.folder.name}.`;
+    $('#workspace-search-status').textContent = this.roots.length === 1
+      ? `Search saved files in ${this.roots[0].folder.name}.` : `Search saved files in ${this.roots.length} selected folders.`;
     $<HTMLInputElement>('#workspace-query').focus();
   }
 
@@ -211,7 +344,9 @@ export class Workbench {
 
   private addSearchResult(result: SearchResult): void {
     const button = element('button', 'result-row'); button.type = 'button';
-    const heading = element('strong'); heading.textContent = `${result.file.relative}:${result.line}:${result.column}`;
+    const root = this.roots.find((item) => item.folder === result.root);
+    const prefix = root && this.roots.length > 1 ? `${this.rootLabel(root)}/` : '';
+    const heading = element('strong'); heading.textContent = `${prefix}${result.file.relative}:${result.line}:${result.column}`;
     const preview = element('small'); preview.textContent = result.preview;
     button.append(heading, preview);
     button.addEventListener('click', () => {
@@ -223,8 +358,8 @@ export class Workbench {
   }
 
   private async runSearch(): Promise<void> {
-    const folder = this.folder;
-    if (!folder) { this.host.toast('Open a folder before searching its files.'); return; }
+    const folders = this.roots.map((root) => root.folder);
+    if (!folders.length) { this.host.toast('Open a folder before searching its files.'); return; }
     this.searchController?.abort();
     const controller = new AbortController(); this.searchController = controller;
     const generation = this.folderGeneration;
@@ -232,7 +367,7 @@ export class Workbench {
     $('#workspace-search-run').setAttribute('disabled', ''); $('#workspace-search-cancel').hidden = false;
     $('#workspace-search-status').textContent = 'Searching saved files locally…';
     try {
-      const result = await searchWorkspace(folder, {
+      const result = await searchWorkspace(folders, {
         query: $<HTMLInputElement>('#workspace-query').value,
         extensions: $<HTMLInputElement>('#workspace-filter').value,
         caseSensitive: $<HTMLInputElement>('#workspace-case').checked,
@@ -270,12 +405,15 @@ export class Workbench {
     $<HTMLInputElement>('#quick-input').value = '';
     this.show('quick-dialog'); this.renderQuick();
     $<HTMLInputElement>('#quick-input').focus();
-    if (!this.folder) { $('#quick-status').textContent = 'Open files and opted-in recent files.'; return; }
-    const folder = this.folder;
-    $('#quick-status').textContent = 'Indexing filenames in the selected folder…';
-    void walkWorkspace(folder, async (file) => {
+    if (!this.roots.length) { $('#quick-status').textContent = 'Open files and opted-in recent files.'; return; }
+    const folders = this.roots.map((root) => root.folder);
+    $('#quick-status').textContent = 'Indexing filenames in the selected folders…';
+    void walkWorkspace(folders, async (file, _progress, sourceRoot) => {
       if (file.kind === 'native' && knownPaths.has(file.path.toLowerCase())) return;
-      this.quickItems.push({ kind: 'workspace', name: file.name, detail: file.relative, file });
+      if (file.kind === 'native') knownPaths.add(file.path.toLowerCase());
+      const root = this.roots.find((item) => item.folder === sourceRoot);
+      const detail = root && this.roots.length > 1 ? `${this.rootLabel(root)}/${file.relative}` : file.relative;
+      this.quickItems.push({ kind: 'workspace', name: file.name, detail, file });
       if (this.quickItems.length % 50 === 0 && generation === this.quickGeneration) this.renderQuick();
     }, { signal: controller.signal }).then((progress) => {
       if (generation !== this.quickGeneration || controller.signal.aborted) return;
@@ -395,8 +533,8 @@ export class Workbench {
   private showArena(): void {
     this.arenaTarget = null;
     $<HTMLTextAreaElement>('#arena-selection').value = '';
-    this.updateSensitiveWarning();
-    $('#arena-status').textContent = desktop ? 'No data is sent until you explicitly confirm a request.' : 'Arena API requests require the desktop app. Browser use and pasted-change review remain available.';
+    this.clearArenaResults(); this.updateSensitiveWarning(); this.updateArenaControls();
+    $('#arena-status').textContent = desktop ? 'Nothing is sent until you confirm each request.' : 'Arena API requests require the desktop app. Browser use and pasted-change review remain available.';
     this.show('arena-dialog');
   }
   private async external(url: string): Promise<void> {
@@ -413,7 +551,7 @@ export class Workbench {
       $<HTMLTextAreaElement>('#arena-selection').value = target.original;
       $('#arena-status').textContent = `${target.original.length.toLocaleString()} selected characters ready to review. Nothing has been sent.`;
     } catch (error) { this.arenaTarget = null; $<HTMLTextAreaElement>('#arena-selection').value = ''; $('#arena-status').textContent = this.error(error); }
-    this.updateSensitiveWarning();
+    this.clearArenaResults(); this.updateSensitiveWarning();
   }
   private updateSensitiveWarning(): string[] {
     const findings = findPotentialSecrets(this.arenaTarget?.original || '', $<HTMLTextAreaElement>('#arena-instruction').value);
@@ -422,49 +560,115 @@ export class Workbench {
     warning.textContent = findings.length ? `Possible sensitive content: ${findings.join(', ')}. This check can miss secrets or flag harmless text. Remove sensitive content before sending, or cancel.` : '';
     return findings;
   }
+  private clearArenaResults(): void {
+    this.arenaResults = []; $('#arena-results').hidden = true;
+    for (const number of [1, 2]) {
+      $<HTMLTextAreaElement>(`#arena-response-${number}`).value = '';
+      $(`#arena-review-${number}`).hidden = true;
+    }
+    $('#arena-result-card-2').hidden = true;
+  }
+  private updateArenaControls(): void {
+    const compare = $<HTMLInputElement>('#arena-compare').checked;
+    $('#arena-model-second-field').hidden = !compare;
+    $('#arena-send').textContent = compare ? 'Compare two models' : 'Send to Arena';
+  }
+  private setArenaBusy(busy: boolean): void {
+    for (const selector of ['#arena-key', '#arena-mode', '#arena-model', '#arena-model-second', '#arena-compare', '#arena-instruction', '#arena-capture', '#arena-send'] as const) {
+      $<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement>(selector).disabled = busy;
+    }
+    $('#arena-cancel').hidden = !busy;
+  }
   private async sendArena(): Promise<void> {
     if (this.arenaController) return;
     if (!desktop) { $('#arena-status').textContent = 'Arena API requests require the desktop app.'; return; }
     const target = this.arenaTarget;
-    if (!target || !this.host.targetIsCurrent(target)) { $('#arena-status').textContent = 'Capture a current selection before sending.'; return; }
-    const request = {
+    const mode = $<HTMLSelectElement>('#arena-mode').value as ArenaMode;
+    if (target && !this.host.targetIsCurrent(target)) { $('#arena-status').textContent = 'The captured selection changed. Capture it again before sending.'; return; }
+    if (mode === 'edit' && !target) { $('#arena-status').textContent = 'Capture a current selection before requesting an edit.'; return; }
+    const request: ArenaRequest = {
       key: $<HTMLInputElement>('#arena-key').value,
       model: $<HTMLInputElement>('#arena-model').value,
       instruction: $<HTMLTextAreaElement>('#arena-instruction').value,
-      selection: target.original,
+      selection: target?.original || '', mode,
     };
-    try { buildArenaRequest(request); } catch (error) { $('#arena-status').textContent = this.error(error); return; }
+    const compare = $<HTMLInputElement>('#arena-compare').checked;
+    const requests = compare ? [request, { ...request, model: $<HTMLInputElement>('#arena-model-second').value }] : [request];
+    try {
+      requests.forEach(buildArenaRequest);
+      if (requests.length === 2 && requests[0].model.trim() === requests[1].model.trim()) throw new Error('Choose two different model IDs to compare.');
+    } catch (error) { $('#arena-status').textContent = this.error(error); return; }
     const findings = this.updateSensitiveWarning();
     const safetyNotice = findings.length ? ` Possible sensitive content detected: ${findings.join(', ')}. The check can be mistaken or incomplete; review the exact text before sending.` : ' The automatic credential check is incomplete; review the exact text for sensitive data before sending.';
-    const choice = await this.host.confirm('Send selected text to Arena?', `Send ${target.original.length.toLocaleString()} selected characters and your instruction to ${ARENA_API_ENDPOINT} using model “${request.model.trim()}”. This is a cloud service; API charges, provider sharing and retention depend on your Arena account and terms. Morrow does not add file paths or other files, but your selection or instruction may contain them.${safetyNotice}`, [
-      { id: 'cancel', label: 'Cancel' }, { id: 'send', label: 'Send to Arena', style: 'primary' },
-    ], 'EXPLICIT CLOUD CONSENT');
-    if (choice !== 'send' || this.arenaTarget !== target || !$<HTMLDialogElement>('#arena-dialog').open || !this.host.targetIsCurrent(target)) return;
+    const modelNames = requests.map((item) => `“${item.model.trim()}”`).join(' and ');
+    const choice = await this.host.confirm(compare ? 'Send two requests to Arena?' : 'Send request to Arena?',
+      `Send your ${mode === 'edit' ? 'edit instruction' : 'question'} and ${request.selection.length.toLocaleString()} captured characters to ${ARENA_API_ENDPOINT} using ${modelNames}. ${compare ? 'This makes two separate requests, and both may incur charges. ' : ''}This is a cloud service; API charges, provider sharing and retention depend on your Arena account and terms. Morrow does not add file paths or other files, but your text may contain them.${safetyNotice}`,
+      [{ id: 'cancel', label: 'Cancel' }, { id: 'send', label: compare ? 'Send both requests' : 'Send to Arena', style: 'primary' }], 'EXPLICIT CLOUD CONSENT');
+    if (choice !== 'send' || this.arenaTarget !== target || !$<HTMLDialogElement>('#arena-dialog').open || (target && !this.host.targetIsCurrent(target))) return;
+    // If anything changed while consent was open, require a fresh review.
+    if ($<HTMLInputElement>('#arena-key').value !== request.key || $<HTMLInputElement>('#arena-model').value !== request.model
+      || $<HTMLTextAreaElement>('#arena-instruction').value !== request.instruction || $<HTMLSelectElement>('#arena-mode').value !== mode
+      || $<HTMLInputElement>('#arena-compare').checked !== compare
+      || (compare && $<HTMLInputElement>('#arena-model-second').value !== requests[1].model)) {
+      $('#arena-status').textContent = 'The request changed. Review it and send again.'; return;
+    }
     const controller = new AbortController(); this.arenaController = controller;
     let timedOut = false;
     const timer = window.setTimeout(() => { timedOut = true; controller.abort(); }, 60_000);
-    $<HTMLButtonElement>('#arena-send').disabled = true; $('#arena-cancel').hidden = false;
-    $('#arena-status').textContent = 'Waiting for Arena…';
+    this.clearArenaResults(); this.setArenaBusy(true);
+    $('#arena-status').textContent = compare ? 'Waiting for two Arena responses…' : 'Waiting for Arena…';
     try {
-      const response = await requestArena(request, controller.signal);
-      if (controller.signal.aborted || this.arenaController !== controller) return;
-      this.arenaController = null;
-      $<HTMLDialogElement>('#arena-dialog').close();
-      this.openReview(target, response);
+      const responses = await requestArenaBatch(requests, controller.signal);
+      if (this.arenaController !== controller) return;
+      if (controller.signal.aborted) { $('#arena-status').textContent = timedOut ? 'Arena request timed out.' : 'Arena request cancelled.'; return; }
+      $('#arena-results').hidden = false; $('#arena-result-card-2').hidden = requests.length < 2;
+      let successful = 0;
+      responses.forEach((result, index) => {
+        const number = index + 1;
+        $(`#arena-result-model-${number}`).textContent = requests[index].model.trim();
+        const response = $<HTMLTextAreaElement>(`#arena-response-${number}`);
+        if (result.status === 'fulfilled') {
+          successful++;
+          // Textarea value is inert text, not HTML or an executable command.
+          response.value = result.value;
+          this.arenaResults[index] = { target, text: result.value, mode };
+          $(`#arena-review-${number}`).hidden = mode !== 'edit' || !target;
+        } else {
+          this.arenaResults[index] = null;
+          response.value = result.reason instanceof Error ? result.reason.message : 'This Arena request failed.';
+          $(`#arena-review-${number}`).hidden = true;
+        }
+      });
+      $('#arena-status').textContent = `${successful} of ${requests.length} response(s) received. AI can be wrong; inspect results before using them.`;
     } catch (error) {
       if (this.arenaController === controller) $('#arena-status').textContent = timedOut ? 'Arena request timed out.' : this.error(error);
     } finally {
       window.clearTimeout(timer);
-      if (this.arenaController === controller) this.arenaController = null;
-      $<HTMLButtonElement>('#arena-send').disabled = false; $('#arena-cancel').hidden = true;
+      if (this.arenaController === controller) { this.arenaController = null; this.setArenaBusy(false); }
     }
+  }
+  private reviewArenaResult(index: number): void {
+    const result = this.arenaResults[index];
+    if (!result || result.mode !== 'edit' || !result.target) return;
+    if (!this.host.targetIsCurrent(result.target)) { $('#arena-status').textContent = 'The target changed or closed. Capture it again before requesting a new edit.'; return; }
+    $<HTMLDialogElement>('#arena-dialog').close();
+    this.openReview(result.target, result.text);
   }
 
   private bind(): void {
     $('#workspace-close').addEventListener('click', () => this.closeFolder());
     $('#workspace-refresh').addEventListener('click', () => { void this.refreshFolder(); });
+    $('#workspace-create-submit').addEventListener('click', () => { void this.submitCreate(); });
+    $('#workspace-create-name').addEventListener('keydown', (event) => { if ((event as KeyboardEvent).key === 'Enter') { event.preventDefault(); void this.submitCreate(); } });
+    $('#workspace-create-dialog').addEventListener('cancel', (event) => { if (this.creating) event.preventDefault(); });
+    $('#workspace-create-dialog').addEventListener('close', () => { this.createTarget = null; });
     $('#workspace-search-run').addEventListener('click', () => { void this.runSearch(); });
     $('#workspace-search-cancel').addEventListener('click', () => this.searchController?.abort());
+    for (const id of ['#workspace-query', '#workspace-filter', '#workspace-case']) {
+      $(id).addEventListener(id === '#workspace-case' ? 'change' : 'input', () => {
+        this.invalidateWorkspaceSearch('Search changed. Run the search again for current results.');
+      });
+    }
     $('#workspace-query').addEventListener('keydown', (event) => { if ((event as KeyboardEvent).key === 'Enter') { event.preventDefault(); void this.runSearch(); } });
     $('#workspace-search-dialog').addEventListener('close', () => this.searchController?.abort());
     $('#quick-input').addEventListener('input', () => this.renderQuick());
@@ -500,15 +704,25 @@ export class Workbench {
     $('#arena-open-privacy').addEventListener('click', () => { void this.external(ARENA_PRIVACY_URL); });
     $('#arena-review-paste').addEventListener('click', () => { $<HTMLDialogElement>('#arena-dialog').close(); this.openReview(); });
     $('#arena-capture').addEventListener('click', () => this.captureArena());
-    $('#arena-instruction').addEventListener('input', () => { this.updateSensitiveWarning(); });
+    for (const selector of ['#arena-key', '#arena-model', '#arena-model-second', '#arena-instruction']) {
+      $(selector).addEventListener('input', () => { this.clearArenaResults(); this.updateSensitiveWarning(); });
+    }
+    for (const selector of ['#arena-mode', '#arena-compare']) {
+      $(selector).addEventListener('change', () => { this.clearArenaResults(); this.updateArenaControls(); });
+    }
     $('#arena-send').addEventListener('click', () => { void this.sendArena(); });
     $('#arena-cancel').addEventListener('click', () => this.arenaController?.abort());
+    $('#arena-review-1').addEventListener('click', () => this.reviewArenaResult(0));
+    $('#arena-review-2').addEventListener('click', () => this.reviewArenaResult(1));
     $('#arena-dialog').addEventListener('close', () => {
       this.arenaController?.abort(); this.arenaController = null; this.arenaTarget = null;
+      this.setArenaBusy(false); this.clearArenaResults();
       $<HTMLInputElement>('#arena-key').value = '';
       $<HTMLTextAreaElement>('#arena-selection').value = '';
       $<HTMLTextAreaElement>('#arena-instruction').value = '';
-      this.updateSensitiveWarning();
+      $<HTMLSelectElement>('#arena-mode').value = 'ask';
+      $<HTMLInputElement>('#arena-compare').checked = false;
+      this.updateArenaControls(); this.updateSensitiveWarning();
     });
   }
 }

@@ -106,7 +106,6 @@ class MorrowApp {
     document.querySelectorAll<HTMLElement>('[data-icon]').forEach((node) => { node.innerHTML = icon(node.dataset.icon || 'info'); });
     this.populateLanguages();
     this.applySettings();
-    this.bindUi();
     let restored = false;
     if (this.settings.recovery) {
       try {
@@ -137,6 +136,11 @@ class MorrowApp {
     this.view = new EditorView({ state: this.active.state, parent: $('#editor') });
     this.renderAll();
     await this.applyLanguage();
+    // Recovery and editor initialization must finish before actions can mutate tabs.
+    this.bindUi();
+    $('#startup-status').hidden = true;
+    $('#app').removeAttribute('inert');
+    $('#app').setAttribute('aria-busy', 'false');
     this.view.focus();
     if (this.recoveryFailed) this.toast('Session recovery is unavailable. Save your work to a file.');
     this.scheduleRecovery();
@@ -428,23 +432,28 @@ class MorrowApp {
       const textAtSave = doc.state.doc;
       const encodingAtSave = doc.encoding, endingAtSave = doc.lineEnding;
       const bytes = encodeFile(textAtSave.toString(), encodingAtSave, endingAtSave);
-      let expected = this.sameRef(doc.ref, target.ref) ? doc.hash : null;
+      let sameTarget = await this.sameRef(doc.ref, target.ref);
+      let expected = sameTarget ? doc.hash : null;
       let digest: string;
-      try { digest = await writeTo(target.ref, bytes, target.name, expected); }
-      catch (error) {
-        if (!(error instanceof ExternalChangeError)) throw error;
-        const choice = await this.confirm('File changed on disk', `“${doc.name}” was changed outside Morrow after it was opened. Overwriting may lose those changes.`, [
-          { id: 'cancel', label: 'Cancel' }, { id: 'save-as', label: 'Save a copy' }, { id: 'overwrite', label: 'Overwrite', style: 'danger' },
-        ], 'YOUR FILE IS SAFE');
-        if (choice === 'cancel') return false;
-        if (choice === 'save-as') {
-          const newTarget = await chooseSaveTarget(doc.name); if (!newTarget) return false;
-          target = newTarget; expected = this.sameRef(doc.ref, target.ref) ? doc.hash : null;
-          // Choosing the same file is not a bypass for the external-change check.
-          digest = await writeTo(target.ref, bytes, target.name, expected);
-        } else digest = await writeTo(target.ref, bytes, target.name, expected, true);
+      for (;;) {
+        try { digest = await writeTo(target.ref, bytes, target.name, expected); break; }
+        catch (error) {
+          if (!(error instanceof ExternalChangeError)) throw error;
+          const choice = await this.confirm('File changed on disk', `“${target.name}” already exists, changed outside Morrow, or was removed since it was opened. Overwriting may lose changes.`, [
+            { id: 'cancel', label: 'Cancel' }, { id: 'save-as', label: 'Save a copy' }, { id: 'overwrite', label: 'Overwrite', style: 'danger' },
+          ], 'CHECK BEFORE SAVING');
+          if (choice === 'cancel') return false;
+          if (choice === 'save-as') {
+            const newTarget = await chooseSaveTarget(doc.name); if (!newTarget) return false;
+            target = newTarget; sameTarget = await this.sameRef(doc.ref, target.ref); expected = sameTarget ? doc.hash : null;
+            // Even choosing the same file or an existing copy must be checked again.
+            continue;
+          }
+          if (choice !== 'overwrite') return false;
+          digest = await writeTo(target.ref, bytes, target.name, expected, true); break;
+        }
       }
-      if (!this.sameRef(doc.ref, target.ref)) doc.displayPath = null;
+      if (!sameTarget) doc.displayPath = null;
       doc.ref = target.ref; doc.name = target.name; doc.hash = digest; doc.sample = false;
       if (target.ref.kind === 'native') this.recordRecent(target.ref.path);
       doc.savedDoc = textAtSave; doc.savedEncoding = encodingAtSave; doc.savedLineEnding = endingAtSave; doc.mixedLineEndings = false;
@@ -456,10 +465,20 @@ class MorrowApp {
     finally { doc.saving = false; }
   }
 
-  private sameRef(a: FileRef | null, b: FileRef): boolean {
+  private async sameRef(a: FileRef | null, b: FileRef): Promise<boolean> {
     if (!a || a.kind !== b.kind) return false;
-    if (a.kind === 'native' && b.kind === 'native') return a.path.toLowerCase() === b.path.toLowerCase();
-    return a.kind === 'browser' && b.kind === 'browser' && a.handle === b.handle;
+    if (a.kind === 'native' && b.kind === 'native') {
+      const key = (path: string) => /^(?:[a-z]:[\\/]|\\\\)/iu.test(path) ? path.replace(/\//gu, '\\').toLowerCase() : path;
+      return key(a.path) === key(b.path);
+    }
+    if (a.kind === 'browser' && b.kind === 'browser') {
+      if (a.handle === b.handle) return true;
+      try {
+        if (typeof a.handle.isSameEntry === 'function') return await a.handle.isSameEntry(b.handle);
+      } catch { /* Never silently skip a conflict check when identity is unknown. */ }
+      throw new Error('Cannot verify whether this is the same file. Save to a different destination or reopen the file.');
+    }
+    return false;
   }
 
   private async confirmClose(doc: Doc): Promise<boolean> {
@@ -532,7 +551,18 @@ class MorrowApp {
       const close = el('button', 'tab-close'); close.type = 'button'; close.innerHTML = icon('close', 13); close.setAttribute('aria-label', `Close ${doc.name}`); close.title = `Close ${doc.name}`;
       close.addEventListener('click', (event) => { event.stopPropagation(); void this.closeDoc(doc.id); });
       tab.append(close); tab.addEventListener('click', () => this.switchDoc(doc.id));
-      tab.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); this.switchDoc(doc.id); } });
+      tab.addEventListener('keydown', (event) => {
+        // A close button is nested inside the tab: never intercept its Enter/Space.
+        if (event.target !== tab) return;
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); this.switchDoc(doc.id); return; }
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const index = this.docs.findIndex((item) => item.id === doc.id);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? this.docs.length - 1
+          : (index + (event.key === 'ArrowRight' ? 1 : -1) + this.docs.length) % this.docs.length;
+        this.switchDoc(this.docs[next].id);
+        tabs.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+      });
       tabs.append(tab);
 
       const item = el('button', `file-list-item${active ? ' active' : ''}`); item.type = 'button'; item.setAttribute('role', 'listitem');
@@ -717,7 +747,7 @@ class MorrowApp {
       case 'settings': this.showDialog('settings-dialog'); break;
       case 'shortcuts': this.showDialog('help-dialog'); break;
       case 'ai': this.toggleAiPanel(); break;
-      case 'about': await this.confirm('A little space for big ideas.', `Morrow 0.2.0 is an open-source text and code editor. Your files stay yours. This is an early preview; save important work regularly.`, [{ id: 'ok', label: 'Sounds good', style: 'primary' }], 'ABOUT MORROW'); break;
+      case 'about': await this.confirm('A little space for big ideas.', `Morrow 0.3.0 is an open-source text and code editor. Your files stay yours. This is an early preview; save important work regularly.`, [{ id: 'ok', label: 'Sounds good', style: 'primary' }], 'ABOUT MORROW'); break;
     }
   }
 
@@ -968,6 +998,21 @@ class MorrowApp {
   private onKey(event: KeyboardEvent): void {
     const mod = event.ctrlKey || event.metaKey;
     const key = event.key.toLowerCase();
+    const openMenu = document.querySelector<HTMLElement>('[data-menu-panel]:not([hidden])');
+    if (openMenu && !document.querySelector('dialog[open]')) {
+      const name = openMenu.dataset.menuPanel;
+      const trigger = document.querySelector<HTMLElement>(`[data-menu="${name}"]`);
+      const items = Array.from(openMenu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'));
+      if (event.key === 'Escape') { event.preventDefault(); this.closeMenus(); trigger?.focus(); return; }
+      if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) && items.length) {
+        event.preventDefault();
+        const current = items.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+          : current < 0 ? (event.key === 'ArrowDown' ? 0 : items.length - 1)
+          : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        items[next].focus(); return;
+      }
+    }
     if (event.key === 'Escape') {
       if (document.querySelector('dialog[open]')) return;
       if (this.findOpen) { event.preventDefault(); this.closeFind(); return; }
@@ -1054,5 +1099,7 @@ class MorrowApp {
 const app = new MorrowApp();
 void app.start().catch((error) => {
   console.error(error);
-  const toast = $('#toast'); toast.textContent = `Morrow couldn't start: ${error instanceof Error ? error.message : String(error)}`; toast.hidden = false;
+  const message = `Morrow couldn't start: ${error instanceof Error ? error.message : String(error)}`;
+  $('#startup-status').textContent = message;
+  const toast = $('#toast'); toast.textContent = message; toast.hidden = false;
 });
