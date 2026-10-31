@@ -1,0 +1,13 @@
+# Issue chooser. Without this file GitHub shows no "where do I start" links and the
+# community profile keeps reporting `issue_template: None`, which is why it exists here.
+blank_issues_enabled: false
+contact_links:
+  - name: 🐧 Start here — you do not need Windows to contribute
+    url: https://github.com/RANJITHROSAN17/morrow-editor/labels/good%20first%20issue
+    about: Small, fully specified tasks. `npm ci && npm test` runs on Linux and macOS too.
+  - name: 🔐 Security issue
+    url: https://github.com/RANJITHROSAN17/morrow-editor/security/policy
+    about: Never open a public issue for a vulnerability. Do not paste API keys or private files.
+  - name: 💬 Question, or "is this still wanted?"
+    url: https://github.com/RANJITHROSAN17/morrow-editor/issues/new
+    about: Ask before you build. A reply within 24 hours is the stated SLA.

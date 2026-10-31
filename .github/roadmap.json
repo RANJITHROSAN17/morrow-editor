@@ -1,0 +1,104 @@
+{
+  "meta": {
+    "description": "Human-reviewed contributor queue for Morrow. The bot reads this file and nothing else. Every entry is reviewed in a normal pull request: an agent that decides at runtime what to build will duplicate, hallucinate, and file tasks nobody can start. Seeded only with work derived from the actual tree (untested pure modules), not from docs/RESEARCH-AND-ROADMAP.md, which is 38 KB of ideas and belongs here as backlog.",
+    "owner": "RANJITHROSAN17",
+    "reply_sla_hours": 24,
+    "open_easy_cap": 3,
+    "created_labels": [
+      "good first issue",
+      "help wanted"
+    ],
+    "notes": [
+      "status: backlog -> not eligible to be filed",
+      "status: ready   -> eligible; the bot may file it when the cap allows",
+      "status: filed   -> bot created it; the marker lives in the issue body",
+      "status: shipped -> bot may comment + close its own issue, naming the release",
+      "Morrow's constraint: a contributor without Windows must be able to finish any 'easy' item. Do not mark an entry 'ready' if it needs `npm run tauri dev`, the Rust tests, or native dialogs."
+    ]
+  },
+  "items": [
+    {
+      "id": "morrow-001-markdown-render-tests",
+      "title": "test: cover src/markdown-render.ts, the pure Markdown-to-preview builder",
+      "status": "ready",
+      "difficulty": "easy",
+      "labels": [
+        "good first issue",
+        "javascript"
+      ],
+      "time_estimate": "~2-3 hours",
+      "files": [
+        "tests/markdown-render.test.ts",
+        "src/markdown-render.ts"
+      ],
+      "verify": "npx vitest run tests/markdown-render.test.ts",
+      "body": "## Context\n\n`src/markdown-render.ts` turns Markdown into a bounded, inert preview tree (`buildMarkdownPreview`). It has **no unit test**: `tests/` has `markdown-preview.test.ts` for the panel, but not for the renderer itself. It is the easiest module in the repo to test \u2014 one external import (`markdown-it`) and a self-contained contract in `src/markdown-preview-contract.ts` (`MAX_MARKDOWN_CHARS`, `MAX_MARKDOWN_NODES`).\n\nThis one runs on **any** OS. You do not need Windows, Rust, or MSVC.\n\n## What to change\n\n- `tests/markdown-render.test.ts` (new): cover the behaviour the limits exist to guarantee.\n\n## Acceptance criteria\n\n- [ ] A document over `MAX_MARKDOWN_CHARS` is truncated, not thrown on\n- [ ] A document producing more than `MAX_MARKDOWN_NODES` nodes is bounded, not expanded\n- [ ] Raw HTML in the source is rendered as **text**, never as live markup\n- [ ] Links and images are disabled in the output tree\n- [ ] Uses `vitest` like the neighbouring tests; no new dependency\n\n## How to verify\n\n```bash\nnpx vitest run tests/markdown-render.test.ts\nnpm test          # 71 -> more, all green\nnpm run build\n```\n\n## Where to start\n\n1. `src/markdown-render.ts` \u2014 78 lines, read it top to bottom.\n2. `tests/markdown-preview.test.ts` \u2014 copy its import and assert style.\n\n## Time estimate\n\n~2-3 hours."
+    },
+    {
+      "id": "morrow-002-samples-tests",
+      "title": "test: assert the bundled samples stay valid and in sync",
+      "status": "ready",
+      "difficulty": "easy",
+      "labels": [
+        "good first issue",
+        "javascript"
+      ],
+      "time_estimate": "~1-2 hours",
+      "files": [
+        "tests/samples.test.ts",
+        "src/samples.ts"
+      ],
+      "verify": "npx vitest run tests/samples.test.ts",
+      "body": "## Context\n\n`src/samples.ts` holds the `PYTHON_SAMPLE` and `MARKDOWN_SAMPLE` strings shown on first launch \u2014 the first thing every new user sees. Nothing tests them. A trailing newline or a broken fence in either becomes a visible bug in the product's first impression, and nothing would catch it.\n\nRuns on any OS.\n\n## What to change\n\n- `tests/samples.test.ts` (new): assert the invariants that matter to the user, not the exact text.\n\n## Acceptance criteria\n\n- [ ] Both exports are non-empty strings\n- [ ] `MARKDOWN_SAMPLE` contains balanced code fences (an even count of ``` markers)\n- [ ] `PYTHON_SAMPLE` parses as Python \u2014 `python -c \"compile(open(...).read())\"` is not available to vitest, so instead assert it contains no tab indentation (a documented project style) and ends with a newline\n- [ ] The samples are not identical to each other\n\n## How to verify\n\n```bash\nnpx vitest run tests/samples.test.ts\nnpm test\n```\n\n## Where to start\n\n1. `src/samples.ts` \u2014 54 lines, two template literals.\n2. `tests/encoding.test.ts` for the shallow-assert style this repo prefers.\n\n## Time estimate\n\n~1-2 hours."
+    },
+    {
+      "id": "morrow-003-encoding-edge-cases",
+      "title": "test: extend encoding coverage to BOMs, mixed line endings and round-trips",
+      "status": "ready",
+      "difficulty": "easy",
+      "labels": [
+        "good first issue",
+        "javascript"
+      ],
+      "time_estimate": "~2-4 hours",
+      "files": [
+        "tests/encoding.test.ts",
+        "src/encoding.ts"
+      ],
+      "verify": "npx vitest run tests/encoding.test.ts",
+      "body": "## Context\n\n`src/encoding.ts` does `decodeFile` / `encodeFile` / `inspectLineEndings` over raw `Uint8Array`, and it is where \"my file got mangled\" bugs come from. `tests/encoding.test.ts` exists with 15 tests \u2014 this issue extends it rather than starting it, so you are working from examples.\n\nRuns on any OS.\n\n## What to change\n\n- `tests/encoding.test.ts`: add cases for the edges below.\n\n## Acceptance criteria\n\n- [ ] A UTF-8 BOM is detected and not double-inserted after a decode/encode round-trip\n- [ ] A CRLF file survives `decode -> encode` byte-for-byte\n- [ ] A mixed-ending file is reported as `mixed: true` by `inspectLineEndings`\n- [ ] A file exactly at `MAX_FILE_BYTES` is accepted and one byte over is refused\n- [ ] Invalid UTF-8 does not throw an unhandled error\n\n## How to verify\n\n```bash\nnpx vitest run tests/encoding.test.ts\nnpm test\n```\n\n## Where to start\n\n1. `src/encoding.ts` \u2014 102 lines, four exports.\n2. `tests/encoding.test.ts` \u2014 15 existing tests show the fixture style.\n\n## Time estimate\n\n~2-4 hours."
+    },
+    {
+      "id": "morrow-004-contributing",
+      "title": "docs: add CONTRIBUTING.md with a Windows-free development path",
+      "status": "backlog",
+      "difficulty": "easy",
+      "labels": [
+        "good first issue",
+        "documentation"
+      ],
+      "time_estimate": "~1 hour",
+      "files": [
+        "CONTRIBUTING.md"
+      ],
+      "verify": "grep -n 'npm test' CONTRIBUTING.md",
+      "body": "## Context\n\nGitHub's community profile reports `contributing: MISSING` for this repo (`health_percentage: 42`), and the README's Contributing section is four lines. `SECURITY.md` is also absent, which matters because `src/arena.ts` takes an API key. The bigger problem: nothing tells a visitor that most of Morrow is platform-neutral TypeScript they can work on without Windows or MSVC.\n\n## What to change\n\n- `CONTRIBUTING.md` (new) covering: the Windows-free path (`npm ci`, `npm test`, `npm run test:e2e`), what genuinely requires Windows (`npm run tauri dev`, `cargo test`, native dialogs), commit style, and the reply SLA.\n- `SECURITY.md` (private disclosure via GitHub Security Advisories; no bounty).\n- `.github/ISSUE_TEMPLATE/bug_report.yml`, `config.yml`, `PULL_REQUEST_TEMPLATE.md`, `CODE_OF_CONDUCT.md`.\n\n## Acceptance criteria\n\n- [ ] A Linux/macOS contributor can follow it to a green `npm test`\n- [ ] It names what cannot be done off Windows rather than implying Windows is required for everything\n- [ ] `community/profile` health reaches 100 and reports a security policy\n\n## How to verify\n\n```bash\nnpm ci && npm test\ncurl -s https://api.github.com/repos/RANJITHROSAN17/morrow-editor/community/profile | grep health_percentage\n```\n\n## Where to start\n\n1. `README.md` \u00a7\"Development and testing\" \u2014 the commands already exist there.\n2. `.github/workflows/windows.yml` \u2014 shows the full gate CI runs.\n\n## Time estimate\n\n~1 hour."
+    },
+    {
+      "id": "morrow-005-release",
+      "title": "chore(ci): publish the built installer as a tagged preview release",
+      "status": "backlog",
+      "difficulty": "medium",
+      "labels": [
+        "help wanted"
+      ],
+      "time_estimate": "~1-2 hours",
+      "files": [
+        ".github/workflows/windows.yml",
+        "CHANGELOG.md"
+      ],
+      "verify": "npm run build",
+      "body": "## Context\n\n`windows.yml` already builds the NSIS installer and writes `SHA256SUMS.txt`, then uploads them as an artifact that expires, and there are **0 releases and 0 tags**. The installer already has a checksum but no permanent home.\n\n## What to change\n\n- `.github/workflows/windows.yml`: on a `v*` tag, create a release with the `.exe` and `SHA256SUMS.txt` attached.\n- Release notes must lead with the README's existing honesty line: early preview, unsigned, keep backups.\n\n## Acceptance criteria\n\n- [ ] A tag push produces a release with both assets\n- [ ] The asset downloads without a GitHub login\n- [ ] The release body says \"unsigned preview\", not \"production\"\n- [ ] `CHANGELOG.md` moves 0.4.0 from \"unreleased preview\" to a dated heading\n\n## How to verify\n\n```bash\ngit tag v0.4.0 && git push origin v0.4.0\ngh release view v0.4.0\n```\n\n## Where to start\n\n1. `.github/workflows/windows.yml` \u2014 the build, checksum and upload steps already exist.\n2. `CHANGELOG.md` \u2014 the release text is already written.\n\n## Time estimate\n\n~1-2 hours."
+    }
+  ]
+}

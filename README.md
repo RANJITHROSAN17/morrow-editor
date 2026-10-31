@@ -18,6 +18,11 @@
 
 Morrow is a Windows text and code editor designed to be approachable for everyday notes and useful for quick programming tasks. Edit files without an account; AI assistance is optional.
 
+> [!TIP]
+> **Contributing?** Most of Morrow is platform-neutral TypeScript. `npm ci && npm test` and
+> `npm run build` run on Linux and macOS too — you do not need Windows, Rust or MSVC Build Tools
+> to contribute. See [CONTRIBUTING.md](CONTRIBUTING.md) for exactly which work needs Windows.
+
 > [!IMPORTANT]
 > **Early preview, not a production release.** Keep backups and test with non-critical files first. The Windows installer is unsigned, and consumer Windows 10/11, full accessibility and security audits, and performance benchmarks remain outstanding.
 
@@ -60,7 +65,7 @@ npm run tauri build -- --target x86_64-pc-windows-msvc
 
 The NSIS installer is written to `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`. Windows may warn about an unknown publisher. If WebView2 is missing, its bootstrapper may need internet access.
 
-There is no tagged GitHub release as of 1 November 2026. A successful run of the [Windows build workflow](https://github.com/RANJITHROSAN17/morrow-editor/actions/workflows/windows.yml) may provide a temporary unsigned artifact; artifacts expire and may require GitHub sign-in. An artifact is not a signed production release.
+[**Download the latest preview**](https://github.com/RANJITHROSAN17/morrow-editor/releases) — unsigned, with `SHA256SUMS.txt` attached. As of 1 November 2026 there is no tagged release yet; until there is, a successful run of the [Windows build workflow](https://github.com/RANJITHROSAN17/morrow-editor/actions/workflows/windows.yml) may provide a temporary unsigned artifact that expires and may require GitHub sign-in. An artifact is not a signed production release.
 
 ### Browser UI preview
 
@@ -127,7 +132,14 @@ As checked on 1 November 2026, `main` and [`feature/morrow-0.4.0-design`](https:
 
 ## Contributing
 
-Issues and pull requests are welcome. Describe the problem, your Windows version, steps to reproduce, and expected versus actual behavior. Please **do not post API keys, private files, or sensitive text** in public issues.
+Issues and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), which
+names the tasks that do **not** need Windows and the 24-hour reply expectation. Bug reports need
+your Windows version, steps to reproduce, and expected versus actual behavior. Please **do not
+post API keys, private files, or sensitive text** in public issues — use
+[SECURITY.md](SECURITY.md) for anything sensitive.
+
+Look for [`good first issue`](https://github.com/RANJITHROSAN17/morrow-editor/labels/good%20first%20issue):
+each one names the file, the acceptance criteria and a command that proves it.
 
 - [Report a bug or suggest an improvement](https://github.com/RANJITHROSAN17/morrow-editor/issues)
 - [Changelog](CHANGELOG.md) · [Product research](docs/PRODUCT-RESEARCH-2026.md) · [README comparison](docs/README-RESEARCH-2026-11-01.md)

@@ -54,3 +54,40 @@ jobs:
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/SHA256SUMS.txt
           if-no-files-found: error
+
+  # Publishing is a separate job so the writable token exists ONLY on a tag push. Inline in the
+  # build job it would put `contents: write` on every pull-request run too - a widening nobody
+  # notices until it is abused. The build job keeps the workflow default, `contents: read`.
+  publish:
+    name: Attach the installer to the release
+    needs: build-windows
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Morrow-windows-x64-unsigned
+          path: dist
+
+      # The tag gets an installer a normal person can download. Without this the NSIS build is an
+      # artifact that expires, and the only documented install path stays "install Rust and MSVC".
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*-setup.exe
+            dist/SHA256SUMS.txt
+          prerelease: true
+          body: |
+            **Early preview, not a production release.** Keep backups and test with non-critical
+            files first.
+
+            The Windows installer is **unsigned**, so Windows will warn about an unknown
+            publisher. That warning is accurate: nobody has verified this binary for you. Check
+            the download against `SHA256SUMS.txt` before running it.
+
+            Consumer Windows 10/11 testing, full accessibility and security audits, and
+            performance benchmarks remain outstanding. What has and has not been verified is
+            written down in `docs/IMPLEMENTATION-0.4.0.md#verification-and-limits`.
