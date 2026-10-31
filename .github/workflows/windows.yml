@@ -29,6 +29,7 @@ jobs:
       - name: Frontend build and unit tests
         run: |
           npm run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm test
       - name: Install headless Chromium for UI tests
         run: npx playwright install --only-shell chromium

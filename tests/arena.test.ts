@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ARENA_API_ENDPOINT, MAX_ARENA_CONTEXT, buildArenaRequest, requestArena, type ArenaRequest } from '../src/arena';
+import { ARENA_API_ENDPOINT, MAX_ARENA_CONTEXT, buildArenaRequest, requestArena, requestArenaBatch, type ArenaRequest } from '../src/arena';
 
 const request: ArenaRequest = { key: 'test-secret', model: 'coding-router-preview', instruction: 'Make it clearer', selection: 'const a = 1;' };
 type Transport = NonNullable<Parameters<typeof requestArena>[2]>;
@@ -64,5 +64,62 @@ describe('optional Arena API transport', () => {
 
   it('does not send to the API from the browser preview without an injected test transport', async () => {
     await expect(requestArena(request)).rejects.toThrow(/desktop app/);
+  });
+});
+
+describe('direct Arena questions and explicit model comparison', () => {
+  const ask: ArenaRequest = { key: 'private-key', model: 'model-one', instruction: 'Explain closures', selection: '', mode: 'ask' };
+  it('supports a standalone question without a selection or hidden conversation history', () => {
+    const body = buildArenaRequest(ask);
+    expect(body.messages).toHaveLength(2);
+    expect(body.messages[1].content).toBe('Question:\nExplain closures');
+    expect(body.messages[0].content).toContain('untrusted data');
+    expect(JSON.stringify(body)).not.toContain('private-key');
+    const contextual = buildArenaRequest({ ...ask, selection: 'const x = 1;' });
+    expect(contextual.messages[1].content).toBe('Question:\nExplain closures\n\nSelected text:\nconst x = 1;');
+  });
+  it('requires a selection for edits and rejects unknown task modes', () => {
+    expect(() => buildArenaRequest({ ...ask, mode: 'edit' })).toThrow(/Select/);
+    expect(() => buildArenaRequest({ ...ask, mode: 'bogus' as 'ask' })).toThrow(/valid Arena task/);
+  });
+  it('validates both distinct models before sending, with at most two explicit requests', async () => {
+    const transport = vi.fn<Transport>(async () => ok('ok'));
+    await expect(requestArenaBatch([ask, { ...ask }], undefined, transport)).rejects.toThrow(/different model/);
+    await expect(requestArenaBatch([ask, { ...ask, model: '' }], undefined, transport)).rejects.toThrow(/model/);
+    await expect(requestArenaBatch([ask, ask, ask], undefined, transport)).rejects.toThrow(/one or two/);
+    await expect(requestArenaBatch([], undefined, transport)).rejects.toThrow(/one or two/);
+    expect(transport).not.toHaveBeenCalled();
+  });
+  it('runs two approved models independently and reports a partial failure safely', async () => {
+    const seen: string[] = [];
+    const transport: Transport = async (url, init) => {
+      expect(url).toBe(ARENA_API_ENDPOINT);
+      expect(init.maxRedirections).toBe(0);
+      const body = JSON.parse(String(init.body)) as { model: string; messages: { content: string }[] };
+      expect(JSON.stringify(body)).not.toContain('private-key');
+      seen.push(body.model);
+      return body.model === 'model-one' ? ok('<script>alert(1)</script>') : new Response('private-key', { status: 403 });
+    };
+    const result = await requestArenaBatch([ask, { ...ask, model: 'model-two' }], undefined, transport);
+    expect(seen).toEqual(['model-one', 'model-two']);
+    expect(result[0]).toEqual({ status: 'fulfilled', value: '<script>alert(1)</script>' });
+    expect(result[1].status).toBe('rejected');
+    if (result[1].status === 'rejected') {
+      expect(String(result[1].reason)).toContain('rejected');
+      expect(String(result[1].reason)).not.toContain('private-key');
+    }
+  });
+});
+
+describe('Arena website prompt preparation', () => {
+  it('includes only the explicit instruction and selected text, without paths or implicit data', async () => {
+    const { buildBrowserPrompt, ARENA_WEBSITE } = await import('../src/arena');
+    expect(ARENA_WEBSITE).toBe('https://arena.ai/agent');
+    expect(buildBrowserPrompt('  Simplify this  ', 'const n = 1;')).toBe('Instruction:\nSimplify this\n\nSelected text:\nconst n = 1;');
+    expect(buildBrowserPrompt('', 'draft')).toBe('draft');
+    expect(buildBrowserPrompt('', 'draft')).not.toContain('path');
+    expect(() => buildBrowserPrompt('x'.repeat(4001), 'draft')).toThrow(/Instruction exceeds/);
+    expect(() => buildBrowserPrompt('', '')).toThrow(/Select/);
+    expect(() => buildBrowserPrompt('', 'x'.repeat(MAX_ARENA_CONTEXT + 1))).toThrow(/Select/);
   });
 });

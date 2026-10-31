@@ -3,6 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 async function ready(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('.cm-content')).toBeVisible();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
 }
 
 async function writeDraft(page: Page, text: string, waitForSave = true): Promise<void> {
@@ -48,6 +49,7 @@ test('failed preference writes are visible and an old AI-on setting never re-ena
   await expect(page.locator('#storage-warning')).toContainText('may revert after restarting');
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('morrow.settings.v1')!).aiEnabled)).toBe(true);
   await page.reload();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   await expect(page.locator('#ai-top-state')).toHaveText('OFF');
 });
 
@@ -82,6 +84,7 @@ test('unreadable settings pause recovery without deleting or overwriting the old
   await writeDraft(page, 'Do not lose this recovery copy');
   await page.evaluate(() => sessionStorage.setItem('test-fail-settings-read', 'yes'));
   await page.reload();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   await expect(page.locator('#storage-warning')).toContainText('Settings could not be read');
   await expect(page.locator('#recovery-status')).toContainText('Recovery paused');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -89,6 +92,7 @@ test('unreadable settings pause recovery without deleting or overwriting the old
   await page.getByRole('button', { name: 'Close settings' }).click();
   await page.waitForTimeout(1600);
   await page.reload();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   await expect(page.locator('.cm-content')).toContainText('Do not lose this recovery copy');
 });
 
@@ -107,6 +111,7 @@ test('an unreadable recovery session is not replaced by examples', async ({ page
   await writeDraft(page, 'Keep this draft even if recovery cannot be read');
   await page.evaluate(() => sessionStorage.setItem('test-fail-session-read', 'yes'));
   await page.reload();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   await expect(page.locator('#storage-warning')).toContainText('previous recovery session could not be read');
   await expect(page.locator('#recovery-status')).toContainText('Recovery paused');
   await page.keyboard.press('Control+n');
@@ -114,6 +119,7 @@ test('an unreadable recovery session is not replaced by examples', async ({ page
   await page.waitForTimeout(1600);
   page.once('dialog', (dialog) => { void dialog.accept(); });
   await page.reload();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   await expect(page.locator('.cm-content')).toContainText('Keep this draft even if recovery cannot be read');
 });
 
@@ -142,6 +148,7 @@ test('failed snapshot writes warn and recover after storage is available again',
   await expect(page.locator('#storage-warning')).toBeHidden({ timeout: 5000 });
   await expect(page.locator('#recovery-status')).toContainText('Local session recovery on');
   await page.reload();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   await expect(page.locator('.cm-content')).toContainText('Unsaved while recovery is unavailable and storage is back');
 });
 
@@ -159,6 +166,7 @@ test('an incompatible recovery snapshot remains untouched', async ({ page }) => 
     };
   }));
   await page.reload();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   await expect(page.locator('#storage-warning')).toContainText('previous recovery session could not be read');
   await page.waitForTimeout(1600);
   const stored = await page.evaluate(async () => new Promise<unknown>((resolve, reject) => {
@@ -189,6 +197,7 @@ test('deleting an unreadable recovery snapshot requires explicit confirmation', 
   await writeDraft(page, 'Existing snapshot before delete confirmation');
   await page.evaluate(() => sessionStorage.setItem('test-fail-session-read-for-delete', 'yes'));
   await page.reload();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   await expect(page.locator('#storage-warning')).toContainText('previous recovery session could not be read');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const recoverySwitch = page.getByRole('switch', { name: 'Remember my session' });
@@ -286,6 +295,7 @@ test('recovery keeps more than 100 tabs rather than silently truncating the snap
     };
   }));
   await page.reload();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   await expect(page.locator('#file-count')).toHaveText('101');
   await expect(page.locator('.cm-content')).toContainText('contents 100');
   await expect.poll(() => page.evaluate(async () => new Promise<{ count: number; resaved: boolean }>((resolve, reject) => {

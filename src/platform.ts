@@ -1,6 +1,5 @@
 import { isTauri, invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { readFile, stat } from '@tauri-apps/plugin-fs';
 import { MAX_FILE_BYTES, sha256 } from './encoding';
 
 export const desktop = isTauri();
@@ -21,10 +20,10 @@ function checkSize(size: number): void {
 }
 
 export async function readNative(path: string): Promise<OpenedFile> {
-  const info = await stat(path);
-  if (!info.isFile) throw new Error('Only individual text files can be opened.');
-  checkSize(info.size);
-  const bytes = await readFile(path);
+  // Native code enforces scope, no-follow and the size bound before bytes cross IPC,
+  // even if a file grows between metadata inspection and the actual read.
+  const data = await invoke<ArrayBuffer>('workspace_read_file', { path, maxBytes: MAX_FILE_BYTES });
+  const bytes = new Uint8Array(data);
   checkSize(bytes.length);
   return { name: fileName(path), bytes, ref: { kind: 'native', path } };
 }
@@ -119,10 +118,14 @@ export async function writeTo(ref: FileRef, bytes: Uint8Array, name: string, exp
   const digest = await sha256(bytes);
   if (ref.kind === 'native') {
     try {
-      // Raw IPC avoids serialising large files as JSON. Header values must be ASCII.
+      // Raw IPC avoids serialising large files as JSON. WebView2 can drop empty
+      // headers, so use a non-empty, strictly validated protocol sentinel.
+      // "absent" means a new destination must not already exist, not permission
+      // to replace an unverified file. Both sides validate this metadata.
+      if (expectedHash !== null && !/^[0-9a-f]{64}$/u.test(expectedHash)) throw new Error('Invalid saved file version.');
       await invoke('safe_write', bytes, { headers: {
         'x-morrow-path': encodeURIComponent(ref.path),
-        'x-morrow-expected': expectedHash || '',
+        'x-morrow-expected': expectedHash ?? 'absent',
         'x-morrow-force': force ? '1' : '0',
       } });
     } catch (error) {

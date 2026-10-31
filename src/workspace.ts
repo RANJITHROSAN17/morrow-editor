@@ -17,6 +17,7 @@ export type WorkspaceFile =
 export type WorkspaceEntry = WorkspaceDirectory | WorkspaceFile;
 
 export const MAX_DIRECTORY_ENTRIES = 2_000;
+export const MAX_WORKSPACE_ROOTS = 12;
 export const MAX_WORKSPACE_FILES = 5_000;
 export const MAX_WORKSPACE_DIRECTORIES = 1_000;
 export const MAX_SEARCH_FILE_BYTES = 2 * 1024 * 1024;
@@ -25,6 +26,14 @@ const EXCLUDED_DIRECTORIES = new Set(['.git', '.hg', '.svn', 'node_modules', 'ta
 
 function safeName(name: string): boolean {
   return !!name && name !== '.' && name !== '..' && !/[\\/\0]/u.test(name);
+}
+
+/** Restrict newly created entries to one portable, non-device Windows filename. */
+export function validateNewEntryName(name: string): void {
+  if (!safeName(name) || name.length > 180 || /[<>:"|?*\u0000-\u001f]/u.test(name) || /[ .]$/u.test(name)
+    || /^(?:con|prn|aux|nul|clock\$|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³])(?:[ .]|$)/iu.test(name)) {
+    throw new Error('Enter one valid filename: no slashes, reserved Windows names, trailing dots/spaces, or special characters.');
+  }
 }
 function childPath(parent: string, name: string): string {
   if (!safeName(name)) throw new Error('Invalid folder entry name.');
@@ -90,6 +99,47 @@ export async function listWorkspaceDirectory(directory: WorkspaceDirectory): Pro
   return { entries, skippedLinks, truncated };
 }
 
+export type NewWorkspaceEntryKind = 'file' | 'directory';
+
+/** Create one child only after an explicit action. Never truncate an existing item. */
+export async function createWorkspaceEntry(root: WorkspaceDirectory, parent: WorkspaceDirectory, name: string, kind: NewWorkspaceEntryKind): Promise<WorkspaceEntry> {
+  validateNewEntryName(name);
+  if (root.relative !== '' || root.kind !== parent.kind || !['file', 'directory'].includes(kind)) throw new Error('Invalid folder or entry type.');
+  const relative = childRelative(parent.relative, name);
+  if (root.kind === 'native' && parent.kind === 'native') {
+    // Rust revalidates the selected root, every parent component and the name,
+    // and uses exclusive create on the final component.
+    await invoke('workspace_create_entry', { root: root.path, parentRelative: parent.relative, name, kind });
+    const checkedParent = parent.relative ? parent.relative.split('/').reduce(childPath, root.path) : root.path;
+    const path = childPath(checkedParent, name);
+    return kind === 'directory'
+      ? { kind: 'native', type: 'directory', name, path, relative }
+      : { kind: 'native', type: 'file', name, path, relative };
+  }
+  if (root.kind !== 'browser' || parent.kind !== 'browser') throw new Error('Invalid folder.');
+  if (root.handle !== parent.handle) {
+    if (typeof root.handle.resolve !== 'function') throw new Error('Cannot verify this folder in the browser preview.');
+    const parts = await root.handle.resolve(parent.handle);
+    if (!parts || parts.join('/') !== parent.relative) throw new Error('The destination is outside the chosen folder.');
+  }
+  // File System Access has no exclusive-create primitive. Check both kinds
+  // first; getFileHandle({create:true}) itself does not truncate an existing
+  // file if another process wins the race, but it could return that file.
+  for (const lookup of [() => parent.handle.getFileHandle(name), () => parent.handle.getDirectoryHandle(name)]) {
+    try { await lookup(); throw new Error('An item with that name already exists.'); }
+    catch (error) {
+      if ((error as DOMException).name === 'TypeMismatchError') throw new Error('An item with that name already exists.');
+      if ((error as DOMException).name !== 'NotFoundError') throw error;
+    }
+  }
+  if (kind === 'directory') {
+    const handle = await parent.handle.getDirectoryHandle(name, { create: true }) as IterableDirectory;
+    return { kind: 'browser', type: 'directory', name, rootName: root.rootName || root.name, handle, relative };
+  }
+  const handle = await parent.handle.getFileHandle(name, { create: true });
+  return { kind: 'browser', type: 'file', name, rootName: root.rootName || root.name, handle, relative };
+}
+
 export async function readWorkspaceFile(entry: WorkspaceFile, maxBytes = MAX_FILE_BYTES): Promise<OpenedFile> {
   if (entry.kind === 'native') {
     const raw = await invoke<ArrayBuffer>('workspace_read_file', { path: entry.path, maxBytes });
@@ -113,17 +163,19 @@ function issue(progress: WalkProgress, description: string): void {
 function isAborted(signal?: AbortSignal): boolean { return !!signal?.aborted; }
 const yieldToUi = () => new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
 
-/** Walk only the approved root, with bounded counts and cooperative cancellation. */
+/** Walk only approved roots. Limits apply to the entire workspace, not each root. */
 export async function walkWorkspace(
-  root: WorkspaceDirectory,
-  onFile: (entry: WorkspaceFile, progress: WalkProgress) => Promise<boolean | void>,
+  selected: WorkspaceDirectory | readonly WorkspaceDirectory[],
+  onFile: (entry: WorkspaceFile, progress: WalkProgress, root: WorkspaceDirectory) => Promise<boolean | void>,
   options: { signal?: AbortSignal; onProgress?: (progress: WalkProgress) => void } = {},
 ): Promise<WalkProgress> {
+  const roots: readonly WorkspaceDirectory[] = Array.isArray(selected) ? selected : [selected as WorkspaceDirectory];
+  if (roots.length > MAX_WORKSPACE_ROOTS) throw new Error(`A workspace can contain up to ${MAX_WORKSPACE_ROOTS} folders.`);
   const progress = makeProgress();
-  const stack = [root];
+  const stack = roots.map((root) => ({ root, directory: root })).reverse();
   while (stack.length && !isAborted(options.signal)) {
     if (progress.directories >= MAX_WORKSPACE_DIRECTORIES) { progress.truncated = true; break; }
-    const directory = stack.pop()!;
+    const { root, directory } = stack.pop()!;
     progress.directories++;
     let listing: DirectoryListing;
     try { listing = await listWorkspaceDirectory(directory); }
@@ -140,13 +192,13 @@ export async function walkWorkspace(
       } else {
         if (progress.files >= MAX_WORKSPACE_FILES) { progress.truncated = true; stop = true; break; }
         progress.files++;
-        const keepGoing = await onFile(entry, progress);
+        const keepGoing = await onFile(entry, progress, root);
         if (keepGoing === false) { if (!isAborted(options.signal)) progress.truncated = true; stop = true; break; }
       }
       if ((progress.files + progress.directories) % 25 === 0) { options.onProgress?.(progress); await yieldToUi(); }
     }
     if (stop) break;
-    for (let index = directories.length - 1; index >= 0; index--) stack.push(directories[index]);
+    for (let index = directories.length - 1; index >= 0; index--) stack.push({ root, directory: directories[index] });
     options.onProgress?.(progress);
     await yieldToUi();
   }
@@ -154,7 +206,7 @@ export async function walkWorkspace(
   return progress;
 }
 
-export interface SearchResult { file: WorkspaceFile; line: number; column: number; preview: string; }
+export interface SearchResult { root: WorkspaceDirectory; file: WorkspaceFile; line: number; column: number; preview: string; }
 export interface SearchOptions { query: string; caseSensitive: boolean; extensions: string; signal?: AbortSignal; onResult: (result: SearchResult) => void; onProgress?: (progress: WalkProgress) => void; }
 
 /** Comma-separated extensions or literal filenames, not arbitrary regular expressions. */
@@ -187,13 +239,13 @@ function literalColumn(line: string, needle: string, caseSensitive: boolean): nu
   return Math.min(index, line.length);
 }
 
-export async function searchWorkspace(root: WorkspaceDirectory, options: SearchOptions): Promise<WalkProgress & { matches: number; cancelled: boolean }> {
+export async function searchWorkspace(root: WorkspaceDirectory | readonly WorkspaceDirectory[], options: SearchOptions): Promise<WalkProgress & { matches: number; cancelled: boolean }> {
   const query = options.query;
   if (!query || query.length > 256 || /[\r\n]/u.test(query)) throw new Error('Enter a single-line search of up to 256 characters.');
   const filters = parseFileFilters(options.extensions);
   const needle = options.caseSensitive ? query : query.toLowerCase();
   let matches = 0;
-  const progress = await walkWorkspace(root, async (entry, state) => {
+  const progress = await walkWorkspace(root, async (entry, state, sourceRoot) => {
     if (!matchesFileFilters(entry.name, filters)) return;
     try {
       const opened = await readWorkspaceFile(entry, MAX_SEARCH_FILE_BYTES);
@@ -207,7 +259,7 @@ export async function searchWorkspace(root: WorkspaceDirectory, options: SearchO
         if (column < 0) continue;
         const start = Math.max(0, column - 100);
         const preview = `${start ? '…' : ''}${line.slice(start, start + 260)}${line.length > start + 260 ? '…' : ''}`;
-        options.onResult({ file: entry, line: index + 1, column: column + 1, preview });
+        options.onResult({ root: sourceRoot, file: entry, line: index + 1, column: column + 1, preview });
         matches++;
         if (matches >= MAX_SEARCH_RESULTS) return false;
       }

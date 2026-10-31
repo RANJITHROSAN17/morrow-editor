@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Morrow">
+  <defs><linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ece4ff"/><stop offset="1" stop-color="#ad8cde"/></linearGradient></defs>
+  <rect x="16" y="16" width="480" height="480" rx="123" fill="url(#a)"/>
+  <path d="M124 334V184c0-44 48-61 79-30l53 53 53-53c31-31 79-14 79 30v150M182 334l74-74 74 74" fill="none" stroke="#291e3c" stroke-linecap="round" stroke-linejoin="round" stroke-width="30"/>
+</svg>
