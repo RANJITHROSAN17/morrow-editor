@@ -65,7 +65,13 @@ npm run tauri build -- --target x86_64-pc-windows-msvc
 
 The NSIS installer is written to `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`. Windows may warn about an unknown publisher. If WebView2 is missing, its bootstrapper may need internet access.
 
-[**Download the latest preview**](https://github.com/RANJITHROSAN17/morrow-editor/releases) — unsigned, with `SHA256SUMS.txt` attached. As of 1 November 2026 there is no tagged release yet; until there is, a successful run of the [Windows build workflow](https://github.com/RANJITHROSAN17/morrow-editor/actions/workflows/windows.yml) may provide a temporary unsigned artifact that expires and may require GitHub sign-in. An artifact is not a signed production release.
+[**Download v0.4.0 for Windows**](https://github.com/RANJITHROSAN17/morrow-editor/releases/latest) — a 3.6 MB NSIS installer, no Rust toolchain required. It is unsigned, so Windows will warn about an unknown publisher; that warning is accurate. `SHA256SUMS.txt` is attached, and checking the download against it takes one command:
+
+```bash
+sha256sum Morrow_0.4.0_x64-setup.exe
+```
+
+This is a **preview**, not a production release: it has not had consumer Windows testing, an accessibility audit or a security audit. What has and has not been verified is written down in [`docs/IMPLEMENTATION-0.4.0.md`](docs/IMPLEMENTATION-0.4.0.md#verification-and-limits).
 
 ### Browser UI preview
 
