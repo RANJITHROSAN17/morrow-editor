@@ -2,7 +2,12 @@ name: Windows x64 preview
 on:
   workflow_dispatch:
   push:
+    # Both filters are required. GitHub does not run a push workflow for a ref the workflow
+    # does not list: with only `branches` here, pushing a `v*` tag matches no filter and the
+    # workflow simply never starts, so the tag-gated publish job below could never run.
+    # https://docs.github.com/actions/reference/workflows-and-actions/workflow-syntax#onpushbranchestagsbranches-ignoretags-ignore
     branches: [main]
+    tags: ['v*']
   pull_request:
 
 permissions:
@@ -33,7 +38,12 @@ jobs:
           npm test
       - name: Install headless Chromium for UI tests
         run: npx playwright install --only-shell chromium
+      # Skipped on a tag push. A tag is cut from a commit that already passed this step on `main`;
+      # re-running it means one flaky WebDriver start blocks the release, which is the exact
+      # failure the release job exists to avoid. Everything that gates correctness (unit tests,
+      # Rust tests, the bundle build itself) still runs.
       - name: Browser UI regression tests on Windows
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: npm run test:e2e
       - name: Rust file-safety tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked
