@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_DIRECTORY_ENTRIES, MAX_SEARCH_FILE_BYTES, MAX_SEARCH_RESULTS, listWorkspaceDirectory, matchesFileFilters, parseFileFilters, readWorkspaceFile, searchWorkspace, type SearchResult, type WorkspaceDirectory, type WorkspaceFile } from '../src/workspace';
+import { MAX_DIRECTORY_ENTRIES, MAX_SEARCH_FILE_BYTES, MAX_SEARCH_RESULTS, MAX_WORKSPACE_ROOTS, listWorkspaceDirectory, matchesFileFilters, parseFileFilters, readWorkspaceFile, searchWorkspace, validateNewEntryName, walkWorkspace, type SearchResult, type WorkspaceDirectory, type WorkspaceFile } from '../src/workspace';
 
 type MockHandle = { kind: 'file' | 'directory'; name: string; [key: string]: unknown };
 function file(name: string, text: string | Uint8Array): MockHandle {
@@ -25,6 +25,27 @@ async function search(folder: WorkspaceDirectory, query: string, options: { exte
 }
 
 describe('folder browsing and bounded saved-file search', () => {
+  it('validates portable new names and rejects traversal, device names and alternate streams', () => {
+    for (const value of ['notes.md', 'app.ts', '.gitignore', 'notes 📝.txt']) expect(() => validateNewEntryName(value)).not.toThrow();
+    for (const value of ['', '.', '..', '../outside', 'a/b', 'a\\\\b', 'NUL', 'CON.txt', 'com1.md', 'LPT¹', 'file.', 'file ', 'a:stream', 'what?', 'x'.repeat(181)]) {
+      expect(() => validateNewEntryName(value), value).toThrow(/valid filename/);
+    }
+  });
+
+  it('applies one search result limit across all selected roots', async () => {
+    const first = root([file('one.txt', Array.from({ length: 300 }, () => 'needle').join('\n'))]);
+    const second = root([file('two.txt', Array.from({ length: 300 }, () => 'needle').join('\n'))]);
+    first.name = 'first'; second.name = 'second';
+    const results: SearchResult[] = [];
+    const progress = await searchWorkspace([first, second], { query: 'needle', extensions: '', caseSensitive: false, onResult: (item) => results.push(item) });
+    expect(results).toHaveLength(MAX_SEARCH_RESULTS);
+    expect(progress.matches).toBe(MAX_SEARCH_RESULTS);
+    expect(progress.truncated).toBe(true);
+    expect(results.filter((item) => item.root === first)).toHaveLength(300);
+    expect(results.filter((item) => item.root === second)).toHaveLength(200);
+    await expect(walkWorkspace(Array.from({ length: MAX_WORKSPACE_ROOTS + 1 }, () => first), async () => {})).rejects.toThrow(/up to 12/);
+  });
+
   it('accepts safe literal extension/name filters and rejects regex or paths', () => {
     expect(parseFileFilters(' .ts, *.MD, README.md ')).toEqual(['.ts', '.md', 'readme.md']);
     expect(matchesFileFilters('notes.MD', ['.md'])).toBe(true);

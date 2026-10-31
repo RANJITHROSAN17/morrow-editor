@@ -3,7 +3,7 @@
 **Research date:** 30 October 2026
 **Product:** Morrow, an early open-source Windows text and code editor
 **Audience:** project owner, contributors and prospective testers
-**Decision status:** recommendations and hypotheses, not commitments. The 0.2.0 work described below is implemented in the source tree; Windows release validation is still pending.
+**Decision status:** historical research snapshot and hypotheses from 30 October 2026, not current-release commitments. The implementation and validation status changed afterward; see [the 0.3.0 implementation notes](IMPLEMENTATION-0.3.0.md). In particular, the later Windows Server review found a 0.2.0 new-file save blocker, and the current 0.3.0 source candidate remains unreleased.
 
 ## Executive summary
 

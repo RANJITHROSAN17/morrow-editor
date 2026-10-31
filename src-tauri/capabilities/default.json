@@ -1,24 +1,48 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
-  "description": "User-selected files and folders, local Ollama, and the explicitly requested Arena API are accessible.",
-  "windows": ["main"],
+  "description": "Only the bundled main editor webview gets these permissions; no remote pages are granted native access.",
   "permissions": [
     "core:default",
     "core:window:allow-destroy",
     "core:window:allow-set-title",
     "dialog:default",
-    "fs:allow-read-file",
-    "fs:allow-stat",
     "fs:allow-lstat",
-    { "identifier": "opener:allow-open-url", "allow": [
-      { "url": "https://arena.ai/" },
-      { "url": "https://platform.arena.ai/dashboard/keys" },
-      { "url": "https://help.arena.ai/articles/3765052346-privacy-policy" }
-    ] },
-    { "identifier": "http:default", "allow": [
-      { "url": "http://127.0.0.1:11434/**" },
-      { "url": "https://api.arena.ai/v1/chat/completions" }
-    ] }
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://arena.ai/agent"
+        },
+        {
+          "url": "https://platform.arena.ai/dashboard/keys"
+        },
+        {
+          "url": "https://help.arena.ai/articles/3765052346-privacy-policy"
+        }
+      ]
+    },
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "http://127.0.0.1:11434/api/tags"
+        },
+        {
+          "url": "http://127.0.0.1:11434/api/generate"
+        },
+        {
+          "url": "https://api.arena.ai/v1/chat/completions"
+        }
+      ]
+    },
+    "allow-safe-write",
+    "allow-take-launch-files",
+    "allow-workspace-list-directory",
+    "allow-workspace-read-file",
+    "allow-workspace-create-entry"
+  ],
+  "webviews": [
+    "main"
   ]
 }

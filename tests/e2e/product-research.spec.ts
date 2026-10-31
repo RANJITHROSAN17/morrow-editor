@@ -9,6 +9,7 @@ async function fresh(page: Page) {
   });
   await page.goto('/');
   await expect(page.locator('.cm-content')).toBeVisible();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
 }
 
 test('Markdown preview updates unsaved text without executing HTML or loading links and images', async ({ page }) => {
@@ -64,7 +65,7 @@ test('Arena highlights common credential patterns locally without revealing matc
   await page.keyboard.press('Control+a');
   await page.locator('[data-menu="edit"]').click();
   await page.locator('[data-menu-panel="edit"] [data-action="arena"]').click();
-  await page.locator('#arena-api-section summary').click();
+  await page.getByRole('button', { name: /API key Optional desktop integration/ }).click();
   await page.getByRole('button', { name: 'Capture selection' }).click();
   const warning = page.locator('#arena-sensitive-warning');
   await expect(warning).toBeVisible();

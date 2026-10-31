@@ -27,6 +27,9 @@ describe('critical text color contrast', () => {
         ['dim', 'editor'], ['subtle', 'editor'], ['dim', 'sidebar'], ['muted', 'sidebar'],
         ['syntax-purple', 'editor'], ['syntax-blue', 'editor'], ['syntax-green', 'editor'],
         ['syntax-orange', 'editor'], ['syntax-red', 'editor'],
+        ['primary-fg', 'primary-bg'], ['primary-muted', 'primary-bg'], ['accent', 'accent-dark'],
+        ['text', 'selected'], ['muted', 'selected'], ['status-text', 'status-bg'],
+        ['text', 'surface'], ['muted', 'surface'], ['dim', 'app'],
       ]) {
         expect(contrast(variable(theme, foreground), variable(theme, background)), `${foreground} on ${background}`).toBeGreaterThanOrEqual(4.5);
       }

@@ -1,0 +1,17 @@
+# Morrow 0.4.0 design and security candidate
+
+This is an **unreleased** candidate based on local `0.3.0` (`f66feb9`), not the public `main` 0.2.0 release. The browser preview is not a Windows executable.
+
+## What changed
+
+- A restrained ink-and-lavender dark theme and matching light theme, new application icon, connected tabs, keyboard-focus indicators, reduced-motion handling and a quick-open affordance. Both themes retain semantic syntax colors, a readable editor and familiar menu/keyboard controls.
+- Arena's **Website** flow is default and opens `https://arena.ai/agent` in the user's system browser. The user can capture an explicit selection (up to 12,000 UTF-16 code units), optionally add an instruction, edit and inspect the preview, and explicitly copy. The app adds no path or other file. A local heuristic warns about some potential secrets; it is fallible. The preview can be copied manually if automatic clipboard access fails. The clipboard can be read by other apps. Paste the result into Morrow's review dialog; a stale target is rejected, applying is undoable and no save is automatic.
+- The separately selected **API key** panel retains per-request consent, eligible-key and cost disclosures, bounded responses and separate review. Website authentication is not API authentication. There is no framing, scraped session, UA spoofing, cookie transfer or embedded Google sign-in.
+- Tauri `AppManifest` generates permissions for each custom command, granted only to the `main` webview. A navigation guard limits that privileged webview to bundled origins (plus the explicitly configured localhost dev server in debug builds); external websites use fixed opener URLs. CSP explicitly disallows frames, forms, plugins and base changes. This reduces exposure; it is not a complete sandbox or formal security review.
+- Individual native file reads now use the existing bounded, final-component no-follow command as well as workspace reads. Direct symlinks and reparse points are rejected; parent-directory races remain. Ollama JSON and error bodies are bounded and permitted paths are limited to the two required endpoints. The existing-file conflict check is still not atomic.
+
+## Verification and limits
+
+The feature tests use synthetic text, clipboard stubs, mock filesystem handles, and mock Arena/Ollama endpoints; no actual user files, secrets or paid API calls are required. On Linux, Rust tests load the generated manifest and test that a main local mock webview can invoke a permitted command while a remote origin and another local webview cannot. The mock-runtime test is excluded on Windows after its test executable failed to start on the hosted runner with `STATUS_ENTRYPOINT_NOT_FOUND`; the Windows installed-app smoke test must separately exercise the allowed commands. This is not proof against every possible WebView or filesystem attack.
+
+A Linux Tauri development build was manually exercised with synthetic files: new-file save, opening an existing file, the fixed system-browser opener (intercepted by a test stub), and a mock Ollama check/completion. This verifies the desktop pathway on Linux, not Windows or real Arena authentication. Windows build and installed-GUI status should be reported separately from prior 0.3.0 evidence. Consumer Windows 10/11, real authenticated Arena, accessibility, scaling, performance, code signing, reparse-point edge cases, and a full security audit remain outstanding.
