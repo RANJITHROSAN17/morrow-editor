@@ -23,7 +23,10 @@ name: Contributor queue
 
 on:
   schedule:
-    - cron: "23 * * * *" # hourly; the cap decides whether anything happens
+    # Weekly, not hourly. The cap bounds how many issues can be OPEN, not how often the bot
+    # runs; an hourly cron with a cap of 3 would file the whole queue on day one and then sit
+    # idle for the rest of the month. Monday 09:23 UTC.
+    - cron: "23 9 * * 1"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -58,7 +61,7 @@ jobs:
         id: validate
         env:
           # Inputs reach the shell only here, never as ${{ }} inside run:.
-          DRY_RUN: ${{ inputs.dry_run }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
         run: |
           set -euo pipefail
           if [ ! -f .github/roadmap.json ]; then
@@ -66,7 +69,9 @@ jobs:
             exit 1
           fi
           node scripts/validate-roadmap.js .github/roadmap.json
-          echo "dry_run=${DRY_RUN:-true}" >> "$GITHUB_OUTPUT"
+          # A manual dispatch with dry_run=true stays a no-op. A scheduled run must actually file,
+          # otherwise it validates, reports nothing and exits 0 forever.
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
 
       # ── 1. what is already open? ──────────────────────────────────────────────
       - name: Count the open curated queue
@@ -178,12 +183,15 @@ jobs:
         run: |
           set -euo pipefail
           # Shipped ids from the manifest.
-          jq -r '.items[] | select(.status == "shipped") | .id' .github/roadmap.json > /tmp/shipped.txt
+          # "id<TAB>release" per shipped entry. A shipped entry with no `release` is skipped
+          # rather than closed with a vague comment - see the guard below.
+          jq -r '.items[] | select(.status == "shipped") | [.id, (.release // "")] | @tsv' \
+            .github/roadmap.json > /tmp/shipped.txt
           [ -s /tmp/shipped.txt ] || { echo "nothing shipped"; exit 0; }
 
           gh issue list --state open --limit 200 --json number,body,author > /tmp/open2.json
 
-          while read -r ID; do
+          while IFS=$'\t' read -r ID RELEASE_TAG; do
             [ -n "$ID" ] || continue
             MARKER="<!-- roadmap:${ID} -->"
             while read -r NUM; do
@@ -194,8 +202,13 @@ jobs:
                 github-actions*|app/github-actions) ;;
                 *) echo "::warning::refusing to close #$NUM (author: $AUTHOR, not the bot)"; continue ;;
               esac
-              RELEASE="${PINCH_RELEASE:-the next release}"
-              gh issue comment "$NUM" --body "Shipped in ${RELEASE}. Thanks for the suggestion — credit is in the release notes."
+              # Name the release, or do not close. Closing with "the next release" is how a
+              # shipped-issue comment becomes a lie the first time nobody cuts one.
+              if [ -z "${RELEASE_TAG:-}" ]; then
+                echo "::warning::refusing to close #$NUM (${ID}): no release tag known"
+                continue
+              fi
+              gh issue comment "$NUM" --body "Shipped in ${RELEASE_TAG}. Thanks for the suggestion — credit is in the release notes."
               gh issue close "$NUM" --reason completed
               echo "closed #$NUM (${ID})" >> "$GITHUB_STEP_SUMMARY"
             done < <(jq -r --arg m "$MARKER" '.[] | select((.body // "") | contains($m)) | .number' /tmp/open2.json)
