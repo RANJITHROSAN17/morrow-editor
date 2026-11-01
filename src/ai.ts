@@ -9,13 +9,28 @@ export const AI_CONTEXT_AFTER = 1200;
 export const MAX_OLLAMA_RESPONSE_BYTES = 262_144;
 const MAX_OLLAMA_ERROR_BYTES = 8_192;
 
+/** A boundary between the two code units of one non-BMP character. */
+function splitsSurrogatePair(text: string, index: number): boolean {
+  const before = text.charCodeAt(index - 1);
+  const after = text.charCodeAt(index);
+  return before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff;
+}
+
 /** Limit how much surrounding text leaves the editor; this sends no file path. */
 export function buildCompletionRequest(text: string, cursor: number, model: string) {
+  cursor = Math.max(0, Math.min(text.length, Math.trunc(cursor) || 0));
+  let start = Math.max(0, cursor - AI_CONTEXT_BEFORE);
+  let end = Math.min(text.length, cursor + AI_CONTEXT_AFTER);
+  // Drop partial characters rather than exceeding the context/privacy limits.
+  if (splitsSurrogatePair(text, start)) start++;
+  if (splitsSurrogatePair(text, end)) end--;
+  const promptEnd = splitsSurrogatePair(text, cursor) ? cursor - 1 : cursor;
+  const suffixStart = splitsSurrogatePair(text, cursor) ? cursor + 1 : cursor;
   return {
     model,
-    prompt: text.slice(Math.max(0, cursor - AI_CONTEXT_BEFORE), cursor),
+    prompt: text.slice(start, promptEnd),
     // The FIM template needs a non-empty suffix even at the end of a document.
-    suffix: text.slice(cursor, cursor + AI_CONTEXT_AFTER) || '\n',
+    suffix: text.slice(suffixStart, end) || '\n',
     stream: false,
     options: { temperature: 0.2, num_predict: 96, stop: ['<|endoftext|>', '<|file_separator|>'] },
   };
@@ -25,7 +40,7 @@ export function buildCompletionRequest(text: string, cursor: number, model: stri
 export function firstSuggestion(value: unknown): string {
   if (typeof value !== 'string') return '';
   const first = value.replace(/\r/g, '').split('\n', 1)[0];
-  if (!first.trim() || first.startsWith('```') || first.startsWith('<|')) return '';
+  if (!first.trim() || /^(?:```|<\||<fim_|\[INST\]|<\/s>)/iu.test(first.trimStart())) return '';
   return first.slice(0, 240);
 }
 

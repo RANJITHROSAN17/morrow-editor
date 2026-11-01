@@ -1,6 +1,6 @@
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { desktop, fileName } from './platform';
-import { MAX_REVIEW_CHARS, makeReviewTarget, normalizeReplacement, reviewDiff, type ReviewTarget } from './change-review';
+import { MAX_REVIEW_CHARS, makeReviewTarget, normalizeReplacement, reviewDiff, summarizeReviewDiff, type ReviewTarget } from './change-review';
 import { ARENA_API_ENDPOINT, ARENA_KEYS_URL, ARENA_PRIVACY_URL, ARENA_WEBSITE, MAX_ARENA_CONTEXT, buildArenaRequest, buildBrowserPrompt, requestArenaBatch, type ArenaMode, type ArenaRequest } from './arena';
 import { findPotentialSecrets } from './sensitive-text';
 import { MAX_WORKSPACE_ROOTS, createWorkspaceEntry, listWorkspaceDirectory, pickWorkspace, rankWorkspaceFiles, searchWorkspace, walkWorkspace, type DirectoryListing, type NewWorkspaceEntryKind, type SearchResult, type WalkProgress, type WorkspaceDirectory, type WorkspaceFile } from './workspace';
@@ -497,15 +497,17 @@ export class Workbench {
 
   private renderReview(): void {
     const diff = $('#review-diff'); diff.replaceChildren();
+    $('#review-summary').textContent = 'Line counts unavailable';
     const button = $<HTMLButtonElement>('#review-apply');
     const target = this.reviewTarget;
     if (!target) { button.disabled = true; return; }
     let replacement: string;
-    try { replacement = normalizeReplacement($<HTMLTextAreaElement>('#review-after').value); }
+    try { replacement = normalizeReplacement($<HTMLTextAreaElement>('#review-after').value, target.original); }
     catch (error) { button.disabled = true; $('#review-status').textContent = this.error(error); return; }
     if (!this.host.targetIsCurrent(target)) { button.disabled = true; $('#review-status').textContent = 'The target document changed or was closed. Reject this preview and select the text again.'; return; }
-    if (replacement === target.original) { button.disabled = true; $('#review-status').textContent = 'There is no change to apply.'; return; }
     const changes = reviewDiff(target.original, replacement);
+    const summary = summarizeReviewDiff(changes);
+    if (summary.addedLines !== null) $('#review-summary').textContent = `+${summary.addedLines} added / −${summary.removedLines} removed · ${summary.unchangedLines} unchanged`;
     if (!changes) {
       diff.textContent = 'Diff is too large or complex to display. Compare the complete selected text and replacement above.';
     } else {
@@ -531,7 +533,7 @@ export class Workbench {
   private applyReview(): void {
     if (!this.reviewTarget) return;
     try {
-      const replacement = normalizeReplacement($<HTMLTextAreaElement>('#review-after').value);
+      const replacement = normalizeReplacement($<HTMLTextAreaElement>('#review-after').value, this.reviewTarget.original);
       if (!this.host.targetIsCurrent(this.reviewTarget)) throw new Error('The target document changed or was closed. Select it again before applying.');
       this.host.applyReview(this.reviewTarget, replacement);
       $<HTMLDialogElement>('#review-dialog').close();

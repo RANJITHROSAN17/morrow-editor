@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_REVIEW_CHARS, makeReviewTarget, normalizeReplacement, reviewDiff, reviewTargetIsCurrent } from '../src/change-review';
+import { MAX_REVIEW_CHARS, makeReviewTarget, normalizeReplacement, reviewDiff, reviewTargetIsCurrent, summarizeReviewDiff } from '../src/change-review';
 
 describe('reviewed change safety', () => {
   it('requires a real selection and captures the document, revision, range and original text', () => {
@@ -28,4 +28,17 @@ describe('reviewed change safety', () => {
     expect(parts?.some((part) => part.added && part.value.includes('after'))).toBe(true);
     expect(reviewDiff('a'.repeat(70_000), 'b'.repeat(70_000))).toBeNull();
   });
+  it('rejects identical replacements after normalizing line endings', () => {
+    expect(() => normalizeReplacement('one\r\ntwo', 'one\ntwo')).toThrow(/no change.*edit/i);
+    expect(() => normalizeReplacement('one\ntwo', 'one\rtwo')).toThrow(/no change/i);
+    expect(normalizeReplacement('one\ntwo!', 'one\ntwo')).toBe('one\ntwo!');
+  });
+  it('summarizes diff line tokens, including blank and unterminated lines', () => {
+    expect(summarizeReviewDiff(reviewDiff('one\n\nold\nlast', 'one\n\nnew\nextra\nlast'))).toEqual({ addedLines: 2, removedLines: 1, unchangedLines: 3 });
+    expect(summarizeReviewDiff(reviewDiff('line\n', 'line'))).toEqual({ addedLines: 1, removedLines: 1, unchangedLines: 0 });
+    expect(summarizeReviewDiff([])).toEqual({ addedLines: 0, removedLines: 0, unchangedLines: 0 });
+    expect(summarizeReviewDiff(null)).toEqual({ addedLines: null, removedLines: null, unchangedLines: null });
+    expect(summarizeReviewDiff(reviewDiff('a'.repeat(70_000), 'b'.repeat(70_000)))).toEqual({ addedLines: null, removedLines: null, unchangedLines: null });
+  });
+
 });
