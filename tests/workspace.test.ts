@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_DIRECTORY_ENTRIES, MAX_SEARCH_FILE_BYTES, MAX_SEARCH_RESULTS, MAX_WORKSPACE_ROOTS, listWorkspaceDirectory, matchesFileFilters, parseFileFilters, readWorkspaceFile, searchWorkspace, validateNewEntryName, walkWorkspace, type SearchResult, type WorkspaceDirectory, type WorkspaceFile } from '../src/workspace';
+import { MAX_DIRECTORY_ENTRIES, MAX_SEARCH_FILE_BYTES, MAX_SEARCH_RESULTS, MAX_WORKSPACE_ROOTS, listWorkspaceDirectory, matchesFileFilters, parseFileFilters, rankWorkspaceFiles, readWorkspaceFile, searchWorkspace, validateNewEntryName, walkWorkspace, type SearchResult, type WorkspaceDirectory, type WorkspaceFile } from '../src/workspace';
 
 type MockHandle = { kind: 'file' | 'directory'; name: string; [key: string]: unknown };
 function file(name: string, text: string | Uint8Array): MockHandle {
@@ -44,6 +44,27 @@ describe('folder browsing and bounded saved-file search', () => {
     expect(results.filter((item) => item.root === first)).toHaveLength(300);
     expect(results.filter((item) => item.root === second)).toHaveLength(200);
     await expect(walkWorkspace(Array.from({ length: MAX_WORKSPACE_ROOTS + 1 }, () => first), async () => {})).rejects.toThrow(/up to 12/);
+  });
+
+  it('ranks Quick Open matches by basename, path boundary and subsequence', () => {
+    const files = ['docs/archive/old-main.ts.bak', 'tests/e2e/domain.ts', 'docs/main.ts.md', 'src/main.ts', 'src/mainframe.ts']
+      .map((relative) => ({ kind: 'native', type: 'file', name: relative.split('/').pop()!, path: `/w/${relative}`, relative })) as WorkspaceFile[];
+    expect(rankWorkspaceFiles(files, 'MAIN.TS').map((file) => file.relative))
+      .toEqual(['src/main.ts', 'docs/main.ts.md', 'docs/archive/old-main.ts.bak', 'src/mainframe.ts', 'tests/e2e/domain.ts']);
+    expect(rankWorkspaceFiles(files, '', 2).map((file) => file.relative)).toEqual(['src/main.ts', 'docs/main.ts.md']);
+  });
+
+  it('ranks a 5,000-entry Quick Open index in under 25 ms', () => {
+    const files = Array.from({ length: 5000 }, (_, i) => {
+      const relative = i === 4321 ? 'src/main.ts' : `pkg/module-${i % 97}/dir-${i % 13}/file-${i}.ts`;
+      return { kind: 'native', type: 'file', name: relative.split('/').pop()!, path: `/w/${relative}`, relative } as WorkspaceFile;
+    });
+    const started = performance.now();
+    const ranked = rankWorkspaceFiles(files, 'main.ts');
+    const elapsed = performance.now() - started;
+    expect(ranked[0]?.relative).toBe('src/main.ts');
+    expect(ranked.length).toBeLessThanOrEqual(50);
+    expect(elapsed).toBeLessThan(25);
   });
 
   it('accepts safe literal extension/name filters and rejects regex or paths', () => {

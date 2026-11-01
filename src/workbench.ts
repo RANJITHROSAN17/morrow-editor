@@ -3,7 +3,7 @@ import { desktop, fileName } from './platform';
 import { MAX_REVIEW_CHARS, makeReviewTarget, normalizeReplacement, reviewDiff, type ReviewTarget } from './change-review';
 import { ARENA_API_ENDPOINT, ARENA_KEYS_URL, ARENA_PRIVACY_URL, ARENA_WEBSITE, MAX_ARENA_CONTEXT, buildArenaRequest, buildBrowserPrompt, requestArenaBatch, type ArenaMode, type ArenaRequest } from './arena';
 import { findPotentialSecrets } from './sensitive-text';
-import { MAX_WORKSPACE_ROOTS, createWorkspaceEntry, listWorkspaceDirectory, pickWorkspace, searchWorkspace, walkWorkspace, type DirectoryListing, type NewWorkspaceEntryKind, type SearchResult, type WalkProgress, type WorkspaceDirectory, type WorkspaceFile } from './workspace';
+import { MAX_WORKSPACE_ROOTS, createWorkspaceEntry, listWorkspaceDirectory, pickWorkspace, rankWorkspaceFiles, searchWorkspace, walkWorkspace, type DirectoryListing, type NewWorkspaceEntryKind, type SearchResult, type WalkProgress, type WorkspaceDirectory, type WorkspaceFile } from './workspace';
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string): T => {
   const value = document.querySelector<T>(selector);
@@ -424,9 +424,19 @@ export class Workbench {
   }
 
   private renderQuick(): void {
-    const query = $<HTMLInputElement>('#quick-input').value.trim().toLowerCase();
+    const query = $<HTMLInputElement>('#quick-input').value.trim();
     const list = $('#quick-results'); list.replaceChildren();
-    const matching = this.quickItems.filter((item) => `${item.name} ${item.detail}`.toLowerCase().includes(query));
+    const needle = query.toLowerCase();
+    const folderItems = this.quickItems.filter((item): item is Extract<QuickItem, { kind: 'workspace' }> => item.kind === 'workspace');
+    const byFile = new Map(folderItems.map((item) => [item.file, item]));
+    const ranked = rankWorkspaceFiles(folderItems.map((item) => item.file), query, Number.POSITIVE_INFINITY).map((file) => byFile.get(file)!);
+    // Keep the combined list order: each folder match takes the slot of the folder item it replaces.
+    const matching: QuickItem[] = [];
+    let nextRanked = 0;
+    for (const item of this.quickItems) {
+      if (item.kind === 'workspace') { if (nextRanked < ranked.length) matching.push(ranked[nextRanked++]); }
+      else if (`${item.name} ${item.detail}`.toLowerCase().includes(needle)) matching.push(item);
+    }
     const items = matching.slice(0, 100);
     for (const item of items) {
       const button = element('button', 'picker-row'); button.type = 'button';

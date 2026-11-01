@@ -46,6 +46,40 @@ function compareEntries(a: WorkspaceEntry, b: WorkspaceEntry): number {
   return Number(b.type === 'directory') - Number(a.type === 'directory') || a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
 }
 
+/** Lower is better; undefined means the file does not match the (already lowercased) query. */
+function quickScore(file: WorkspaceFile, query: string): number | undefined {
+  if (!query) return 0;
+  const basename = file.name.toLowerCase();
+  if (basename === query) return 0;
+  if (basename.startsWith(query)) return 1;
+  const path = file.relative.toLowerCase();
+  // A match that starts a path segment or a camelCase word, such as src/main.ts or myMain.ts.
+  for (let index = path.indexOf(query); index >= 0; index = path.indexOf(query, index + 1)) {
+    const before = file.relative[index - 1] ?? '/';
+    if (/[\\/._\- ]/u.test(before) || (/[a-z]/u.test(before) && /[A-Z]/u.test(file.relative[index] ?? ''))) return 2;
+  }
+  let cursor = 0;
+  for (const character of path) {
+    if (character === query[cursor]) cursor++;
+    if (cursor === query.length) return 3;
+  }
+  return undefined;
+}
+
+/** Rank Quick Open matches: basename exact > basename prefix > path boundary > subsequence, then shorter path, then locale. */
+export function rankWorkspaceFiles(files: WorkspaceFile[], query: string, limit = 50): WorkspaceFile[] {
+  const needle = query.trim().toLowerCase();
+  const scored: { file: WorkspaceFile; score: number }[] = [];
+  for (const file of files) {
+    const score = quickScore(file, needle);
+    if (score !== undefined) scored.push({ file, score });
+  }
+  scored.sort((a, b) => a.score - b.score
+    || a.file.relative.length - b.file.relative.length
+    || a.file.relative.localeCompare(b.file.relative, undefined, { sensitivity: 'base', numeric: true }));
+  return scored.slice(0, Math.max(0, limit)).map((item) => item.file);
+}
+
 export async function pickWorkspace(): Promise<WorkspaceDirectory | null> {
   if (desktop) {
     const selected = await open({ directory: true, recursive: true, multiple: false, title: 'Open a folder in Morrow' });
