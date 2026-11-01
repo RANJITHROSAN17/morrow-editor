@@ -158,6 +158,10 @@ each one names the file, the acceptance criteria and a command that proves it.
 - [Report a bug or suggest an improvement](https://github.com/RANJITHROSAN17/morrow-editor/issues)
 - [Changelog](CHANGELOG.md) · [Product research](docs/PRODUCT-RESEARCH-2026.md) · [README comparison](docs/README-RESEARCH-2026-11-01.md)
 
+## Maintainer
+
+**[Ranjith Rosan](https://github.com/RANJITHROSAN17)** maintains Morrow, the Windows text and code editor in this repository. Community contributions and third-party components retain their respective credits; see [third-party notices](THIRD_PARTY_NOTICES.md).
+
 ## License
 
 Morrow's source code is available under the [MIT License](LICENSE). Dependencies and separately downloaded models have their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
