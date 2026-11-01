@@ -19,6 +19,12 @@ updates:
     groups:
       npm-deps:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "markdown-it"
+        update-types: ["version-update:semver-major"]
     labels: ["dependencies"]
   - package-ecosystem: "cargo"
     directory: "/src-tauri"

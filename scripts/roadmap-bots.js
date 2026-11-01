@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * roadmap-bots.js — zero-dependency GitHub automation helpers for Morrow Editor.
  *
@@ -9,7 +8,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const STATUS_MARKER = "<!-- roadmap-status -->";
@@ -229,7 +228,7 @@ export function renderPrContext(roadmap, changedFiles, prBody = "") {
   return lines.join("\n") + "\n";
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const [sub, ...rest] = process.argv.slice(2);
   if (sub === "status") {
     const issuesFile = argValue(rest, "--issues-json") || argValue(rest, "--issues");
