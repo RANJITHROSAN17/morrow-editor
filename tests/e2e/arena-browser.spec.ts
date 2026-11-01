@@ -34,7 +34,12 @@ test('website workflow copies only on request and reviews a literal response bef
   expect(await page.evaluate(() => (window as unknown as Window & { __opened: string[] }).__opened)).toEqual(['https://arena.ai/agent']);
   await page.getByRole('button', { name: 'Review a pasted change' }).click();
   await expect(page.locator('#review-before')).toHaveValue('const secretFree = 1;');
+  await page.locator('#review-after').fill('const secretFree = 1;');
+  await expect(page.locator('#review-status')).toContainText('no change');
+  await expect(page.locator('#review-apply')).toBeDisabled();
+  await expect(page.locator('#review-summary')).toHaveText('Line counts unavailable');
   await page.locator('#review-after').fill('let improved = 2;');
+  await expect(page.locator('#review-summary')).toHaveText('+1 added / −1 removed · 0 unchanged');
   await expect(page.locator('.cm-content')).not.toContainText('let improved = 2;');
   await expect(page.locator('#review-diff')).toContainText('+ let improved = 2;');
   await page.getByRole('button', { name: 'Apply to selection' }).click();

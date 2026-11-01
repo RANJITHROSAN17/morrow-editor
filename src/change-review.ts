@@ -11,11 +11,12 @@ export interface ReviewTarget {
 }
 
 /** The replacement is literal. Markdown fences and prose are never silently stripped. */
-export function normalizeReplacement(value: string): string {
+export function normalizeReplacement(value: string, original?: string): string {
   const text = value.replace(/\r\n?/g, '\n');
   if (!text) throw new Error('Enter replacement text. To delete a selection, use the editor directly.');
   if (text.length > MAX_REVIEW_CHARS) throw new Error(`Replacement exceeds ${MAX_REVIEW_CHARS.toLocaleString()} characters.`);
   if (text.includes('\0')) throw new Error('NUL characters cannot be applied as text.');
+  if (original !== undefined && text === original.replace(/\r\n?/g, '\n')) throw new Error('There is no change to apply. Edit the replacement or reject the preview.');
   return text;
 }
 
@@ -34,4 +35,16 @@ export function reviewTargetIsCurrent(target: ReviewTarget, docId: string, revis
 export function reviewDiff(original: string, replacement: string): Change[] | null {
   if (original.length + replacement.length > 120_000) return null;
   return diffLines(original, replacement, { timeout: 120, maxEditLength: 2_000 }) ?? null;
+}
+
+/** Line counts are unavailable if the bounded diff could not be computed. */
+export function summarizeReviewDiff(changes: Change[] | null): { addedLines: number | null; removedLines: number | null; unchangedLines: number | null } {
+  if (!changes) return { addedLines: null, removedLines: null, unchangedLines: null };
+  const summary = { addedLines: 0, removedLines: 0, unchangedLines: 0 };
+  for (const change of changes) {
+    if (change.added) summary.addedLines += change.count;
+    else if (change.removed) summary.removedLines += change.count;
+    else summary.unchangedLines += change.count;
+  }
+  return summary;
 }
