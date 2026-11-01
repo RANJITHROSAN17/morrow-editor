@@ -47,7 +47,8 @@ function compareEntries(a: WorkspaceEntry, b: WorkspaceEntry): number {
 }
 
 /** Lower is better; undefined means the file does not match the (already lowercased) query. */
-function quickScore(file: WorkspaceFile, query: string): number | undefined {
+type QuickOpenPath = Pick<WorkspaceFile, 'name' | 'relative'>;
+function quickScore(file: QuickOpenPath, query: string): number | undefined {
   if (!query) return 0;
   const basename = file.name.toLowerCase();
   if (basename === query) return 0;
@@ -67,9 +68,9 @@ function quickScore(file: WorkspaceFile, query: string): number | undefined {
 }
 
 /** Rank Quick Open matches: basename exact > basename prefix > path boundary > subsequence, then shorter path, then locale. */
-export function rankWorkspaceFiles(files: WorkspaceFile[], query: string, limit = 50): WorkspaceFile[] {
-  const needle = query.trim().toLowerCase();
-  const scored: { file: WorkspaceFile; score: number }[] = [];
+export function rankWorkspaceFiles<T extends QuickOpenPath>(files: readonly T[], query: string, limit = 50): T[] {
+  const needle = query.trim().replace(/\\/gu, '/').toLowerCase();
+  const scored: { file: T; score: number }[] = [];
   for (const file of files) {
     const score = quickScore(file, needle);
     if (score !== undefined) scored.push({ file, score });

@@ -428,8 +428,7 @@ export class Workbench {
     const list = $('#quick-results'); list.replaceChildren();
     const needle = query.toLowerCase();
     const folderItems = this.quickItems.filter((item): item is Extract<QuickItem, { kind: 'workspace' }> => item.kind === 'workspace');
-    const byFile = new Map(folderItems.map((item) => [item.file, item]));
-    const ranked = rankWorkspaceFiles(folderItems.map((item) => item.file), query, Number.POSITIVE_INFINITY).map((file) => byFile.get(file)!);
+    const ranked = rankWorkspaceFiles(folderItems.map((item) => ({ name: item.name, relative: item.detail, item })), query, Number.POSITIVE_INFINITY).map(({ item }) => item);
     // Keep the combined list order: each folder match takes the slot of the folder item it replaces.
     const matching: QuickItem[] = [];
     let nextRanked = 0;

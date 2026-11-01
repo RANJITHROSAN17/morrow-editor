@@ -54,6 +54,14 @@ describe('folder browsing and bounded saved-file search', () => {
     expect(rankWorkspaceFiles(files, '', 2).map((file) => file.relative)).toEqual(['src/main.ts', 'docs/main.ts.md']);
   });
 
+  it('ranks multi-root display paths and normalizes Windows query separators', () => {
+    const files = [
+      { name: 'guide.md', relative: 'docs-project/guide.md', root: 'docs-project' },
+      { name: 'guide.md', relative: 'other-project/guide.md', root: 'other-project' },
+    ];
+    expect(rankWorkspaceFiles(files, 'docs-project\\guide').map((file) => file.root)).toEqual(['docs-project']);
+  });
+
   it('ranks a 5,000-entry Quick Open index in under 25 ms', () => {
     const files = Array.from({ length: 5000 }, (_, i) => {
       const relative = i === 4321 ? 'src/main.ts' : `pkg/module-${i % 97}/dir-${i % 13}/file-${i}.ts`;
