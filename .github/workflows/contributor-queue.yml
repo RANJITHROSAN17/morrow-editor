@@ -1,31 +1,23 @@
 name: Contributor queue
 
-# Keeps ONE well-specified `good first issue` open at a time, from a manifest a human reviewed.
+# Keeps a bounded window of well-specified contributor issues open from `.github/roadmap.json`.
 #
-# Design rules, in order of how badly they matter:
-#
-#   1. STATE, NOT IMPROVISATION. This workflow never asks a model what to build. It reads
-#      .github/roadmap.json, which is reviewed in a normal pull request. An agent deciding at
-#      runtime what to file will duplicate issues, invent features, and produce tasks nobody
-#      can action.
-#   2. IDEMPOTENT. Every created issue carries a hidden marker `<!-- roadmap:ID -->`. Before
-#      creating, we search for it. Re-running is a no-op.
-#   3. RATE LIMITED. One issue per run, weekly. If open curated issues >= cap, file nothing
-#      and say why in the job summary.
-#   4. IT NEVER TOUCHES HUMAN WORK. Close is only allowed on issues it created itself, only
-#      when the manifest says shipped, and the comment must name a release.
-#   5. IT REFUSES INCOMPLETE ISSUES. scripts/validate-roadmap.js runs first; a manifest entry
-#      without a file path, acceptance criteria, verify command and time estimate fails CI.
-#   6. LEAST PRIVILEGE. contents:read + issues:write. Nothing else is granted, so this job
-#      cannot push, cannot merge, cannot edit code.
-#   7. SAFE INTERPOLATION. Manifest strings reach the shell only through `env:` and "$VAR".
-#      Never `${{ }}` inside a shell body - they are attacker-influenced once anyone can PR.
+#   1. STATE, NOT IMPROVISATION — reads `.github/roadmap.json` only.
+#   2. IDEMPOTENT ACROSS ALL HISTORY — checks `--state all` so closed issues are never re-filed.
+#   3. IMMEDIATE REPLENISHMENT — runs on `issues: [closed]`, `push` to `.github/roadmap.json`,
+#      weekly schedule, and `workflow_dispatch`.
+#   4. RELEASE-VERIFIED CLOSURE — closes only bot-created issues marked `shipped` with a non-empty `release`.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/roadmap.json"
+      - ".github/workflows/contributor-queue.yml"
+      - "scripts/validate-roadmap.js"
+  issues:
+    types: [closed]
   schedule:
-    # Weekly, not hourly. The cap bounds how many issues can be OPEN, not how often the bot
-    # runs; an hourly cron with a cap of 3 would file the whole queue on day one and then sit
-    # idle for the rest of the month. Monday 09:23 UTC.
     - cron: "23 9 * * 1"
   workflow_dispatch:
     inputs:
@@ -48,20 +40,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # ── 0. the manifest must be complete before anything is filed ─────────────
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
 
       - name: Validate the manifest
         id: validate
         env:
-          # Inputs reach the shell only here, never as ${{ }} inside run:.
-          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          DRY_RUN_INPUT: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
           if [ ! -f .github/roadmap.json ]; then
@@ -69,147 +59,202 @@ jobs:
             exit 1
           fi
           node scripts/validate-roadmap.js .github/roadmap.json
-          # A manual dispatch with dry_run=true stays a no-op. A scheduled run must actually file,
-          # otherwise it validates, reports nothing and exits 0 forever.
+
+          if [ -n "${DRY_RUN_INPUT:-}" ]; then
+            DRY_RUN="${DRY_RUN_INPUT}"
+          elif [ -n "${CONTRIBUTOR_QUEUE_DRY_RUN:-}" ]; then
+            DRY_RUN="${CONTRIBUTOR_QUEUE_DRY_RUN}"
+          else
+            DRY_RUN="false"
+          fi
           echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+          echo "**dry run:** ${DRY_RUN}" >> "$GITHUB_STEP_SUMMARY"
 
-      # ── 1. what is already open? ──────────────────────────────────────────────
-      - name: Count the open curated queue
-        id: queue
+      - name: Sync domain labels
+        if: steps.validate.outputs.dry_run != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh issue list --state open --limit 200 \
-            --json number,title,body,labels > /tmp/open.json
+          ensure_label() {
+            gh label create "$1" --color "$2" --description "$3" --force >/dev/null 2>&1 || true
+          }
+          ensure_label "good first issue" "7057ff" "Small, Windows-free task ideal for first-time contributors"
+          ensure_label "help wanted" "008672" "Open for community pull requests"
+          ensure_label "roadmap" "1d76db" "Curated product roadmap item managed by automation"
+          ensure_label "area/editor" "5319e7" "Core editing, encoding, diff review, and session storage"
+          ensure_label "area/ai" "006b75" "Local Ollama inline completions and FIM context"
+          ensure_label "area/workspace" "0052cc" "Workspace indexing, Quick Open, and project search"
+          ensure_label "area/markdown" "1d76db" "Bounded Markdown preview and worker rendering"
+          ensure_label "area/windows" "0e8a16" "Tauri 2 Windows shell, native file IO, and installer"
+          ensure_label "area/security" "d73a4a" "Sensitive-text guardrails, bounded JSON, and path safety"
+          ensure_label "area/docs" "0075ca" "Documentation and contributor guides"
+          ensure_label "area/ci" "bfdadc" "GitHub Actions workflows and automation"
+          ensure_label "status/pending-release" "fbca47" "Merged to main, awaiting next tagged release"
+          ensure_label "pinned" "b60205" "Exempt from stale nudges"
+          ensure_label "stale" "ededed" "No activity for 60 days (nudged, never auto-closed)"
 
-          # Curated = a bot-created issue carrying the marker, or one we labelled ourselves.
-          CURATED="$(jq '[.[] | select((.body // "") | contains("<!-- roadmap:"))] | length' /tmp/open.json)"
-          EASY="$(jq '[.[] | select((.body // "") | contains("<!-- roadmap:")) | select([.labels[].name] | index("difficulty/easy"))] | length' /tmp/open.json)"
-          echo "curated=${CURATED}" >> "$GITHUB_OUTPUT"
-          echo "easy=${EASY}" >> "$GITHUB_OUTPUT"
-          echo "**open curated queue:** ${CURATED} (easy: ${EASY})" >> "$GITHUB_STEP_SUMMARY"
-
-      # ── 2. pick the next ready item, if the cap allows ────────────────────────
-      - name: Select the next item
-        id: pick
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          EASY_COUNT: ${{ steps.queue.outputs.easy }}
-        run: |
-          set -euo pipefail
-          CAP="$(jq -r '.meta.open_easy_cap // 3' .github/roadmap.json)"
-          EASY="${EASY_COUNT:-0}"
-
-          if [ "$EASY" -ge "$CAP" ]; then
-            echo "decision=skip" >> "$GITHUB_OUTPUT"
-            echo "reason=queue full: ${EASY} open easy issues, cap ${CAP}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # First ready item whose marker is not already open.
-          N="$(jq '[.[] | select(.body // "" | test("<!-- roadmap:"))] | length' /tmp/open.json)"
-          ITEM="$(jq -c --slurpfile open /tmp/open.json '
-            [ .items[] | select(.status == "ready") ]
-            | map(select(
-                (.id | "<!-- roadmap:" + . + " -->") as $m
-                | ([$open[0][] | select((.body // "") | contains($m))] | length) == 0
-              ))
-            | first // empty' .github/roadmap.json)"
-
-          if [ -z "$ITEM" ]; then
-            echo "decision=skip" >> "$GITHUB_OUTPUT"
-            echo "reason=no ready item left unfiled" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "decision=file" >> "$GITHUB_OUTPUT"
-          {
-            echo "id=$(jq -r .id <<< "$ITEM")"
-            echo "title=$(jq -r .title <<< "$ITEM")"
-            echo "difficulty=$(jq -r .difficulty <<< "$ITEM")"
-            echo "labels=$(jq -r '.labels | join(",")' <<< "$ITEM")"
-            echo "time=$(jq -r '.time_estimate // "unstated"' <<< "$ITEM")"
-          } >> "$GITHUB_OUTPUT"
-          jq -r .body <<< "$ITEM" > /tmp/body.md
-
-      # ── 3. file it, with the ownership footer and the hidden marker ───────────
-      - name: File the issue
-        if: steps.pick.outputs.decision == 'file' && steps.validate.outputs.dry_run != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ITEM_ID: ${{ steps.pick.outputs.id }}
-          ITEM_TITLE: ${{ steps.pick.outputs.title }}
-          ITEM_LABELS: ${{ steps.pick.outputs.labels }}
-          ITEM_TIME: ${{ steps.pick.outputs.time }}
-        run: |
-          set -euo pipefail
-          SLA="$(jq -r '.meta.reply_sla_hours // 24' .github/roadmap.json)"
-          OWNER="$(jq -r '.meta.owner // "the maintainer"' .github/roadmap.json)"
-
-          {
-            cat /tmp/body.md
-            printf '\n---\n\n'
-            printf '⏱️ **%s** · Maintained by @%s — expect a reply within %s hours.\n\n' \
-              "$ITEM_TIME" "$OWNER" "$SLA"
-            printf 'Not sure where to start? Comment and ask; that is a valid first contribution.\n\n'
-            printf '<!-- roadmap:%s -->\n' "$ITEM_ID"
-          } > /tmp/final-body.md
-
-          IFS=',' read -r -a LABELS <<< "$ITEM_LABELS"
-          ARGS=()
-          for l in "${LABELS[@]}"; do
-            [ -n "$l" ] && ARGS+=(--label "$l")
-          done
-          # Create the labels if the repo has never used them.
-          for l in "${LABELS[@]}"; do
-            [ -n "$l" ] && gh label create "$l" >/dev/null 2>&1 || true
-          done
-
-          URL="$(gh issue create --title "$ITEM_TITLE" --body-file /tmp/final-body.md "${ARGS[@]}")"
-          echo "filed: ${URL}" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Report a skipped run
-        if: steps.pick.outputs.decision == 'skip'
-        env:
-          REASON: ${{ steps.pick.outputs.reason }}
-        run: echo "no issue filed — ${REASON}" >> "$GITHUB_STEP_SUMMARY"
-
-      # ── 4. close only our own shipped issues, and name the release ────────────
       - name: Close shipped items the bot opened
         if: steps.validate.outputs.dry_run != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Shipped ids from the manifest.
-          # "id<TAB>release" per shipped entry. A shipped entry with no `release` is skipped
-          # rather than closed with a vague comment - see the guard below.
           jq -r '.items[] | select(.status == "shipped") | [.id, (.release // "")] | @tsv' \
             .github/roadmap.json > /tmp/shipped.txt
-          [ -s /tmp/shipped.txt ] || { echo "nothing shipped"; exit 0; }
+          if [ -s /tmp/shipped.txt ]; then
+            gh issue list --state open --limit 200 --json number,body,author > /tmp/open2.json
+            while IFS=$'\t' read -r ID RELEASE_TAG; do
+              [ -n "$ID" ] || continue
+              MARKER="<!-- roadmap:${ID} -->"
+              while read -r NUM; do
+                [ -n "$NUM" ] || continue
+                AUTHOR="$(jq -r --argjson n "$NUM" '.[] | select(.number == $n) | .author.login' /tmp/open2.json)"
+                case "$AUTHOR" in
+                  github-actions*|app/github-actions) ;;
+                  *) echo "::warning::refusing to close #$NUM (author: $AUTHOR, not the bot)"; continue ;;
+                esac
+                if [ -z "${RELEASE_TAG:-}" ]; then
+                  echo "::warning::refusing to close #$NUM (${ID}): no release tag known"
+                  continue
+                fi
+                gh issue comment "$NUM" --body "Shipped in ${RELEASE_TAG}. Thanks for contributing — credit is in the release notes."
+                gh issue close "$NUM" --reason completed
+                echo "closed #$NUM (${ID})" >> "$GITHUB_STEP_SUMMARY"
+              done < <(jq -r --arg m "$MARKER" '.[] | select((.body // "") | contains($m)) | .number' /tmp/open2.json)
+            done < /tmp/shipped.txt
+          fi
 
-          gh issue list --state open --limit 200 --json number,body,author > /tmp/open2.json
+      - name: Count the open curated queue
+        id: queue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh issue list --state open --limit 200 --json number,title,body,labels > /tmp/open.json
+          gh issue list --state all --limit 500 --json number,title,body,state > /tmp/all.json
 
-          while IFS=$'\t' read -r ID RELEASE_TAG; do
-            [ -n "$ID" ] || continue
-            MARKER="<!-- roadmap:${ID} -->"
-            while read -r NUM; do
-              [ -n "$NUM" ] || continue
-              # Rule 4: only issues this bot created.
-              AUTHOR="$(jq -r --argjson n "$NUM" '.[] | select(.number == $n) | .author.login' /tmp/open2.json)"
-              case "$AUTHOR" in
-                github-actions*|app/github-actions) ;;
-                *) echo "::warning::refusing to close #$NUM (author: $AUTHOR, not the bot)"; continue ;;
-              esac
-              # Name the release, or do not close. Closing with "the next release" is how a
-              # shipped-issue comment becomes a lie the first time nobody cuts one.
-              if [ -z "${RELEASE_TAG:-}" ]; then
-                echo "::warning::refusing to close #$NUM (${ID}): no release tag known"
-                continue
+          CURATED="$(jq '[.[] | select((.body // "") | contains("<!-- roadmap:"))] | length' /tmp/open.json)"
+          EASY="$(jq -r --slurpfile open /tmp/open.json '
+            [ .items[]
+              | select(.difficulty == "easy")
+              | .id as $id
+              | select(
+                  ([$open[0][] | select((.body // "") | contains("<!-- roadmap:" + $id + " -->"))] | length) > 0
+                )
+              | $id
+            ] | length' .github/roadmap.json)"
+          echo "curated=${CURATED}" >> "$GITHUB_OUTPUT"
+          echo "easy=${EASY}" >> "$GITHUB_OUTPUT"
+          echo "**open curated queue:** ${CURATED} (easy: ${EASY})" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Select items to file
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EASY_COUNT: ${{ steps.queue.outputs.easy }}
+          CURATED_COUNT: ${{ steps.queue.outputs.curated }}
+        run: |
+          set -euo pipefail
+          EASY_CAP="$(jq -r '.meta.open_easy_cap // 3' .github/roadmap.json)"
+          TOTAL_CAP="$(jq -r '.meta.open_curated_cap // 4' .github/roadmap.json)"
+          EASY="${EASY_COUNT:-0}"
+          CURATED="${CURATED_COUNT:-0}"
+
+          if [ "$CURATED" -ge "$TOTAL_CAP" ]; then
+            echo "decision=skip" >> "$GITHUB_OUTPUT"
+            echo "reason=queue full: ${CURATED} open curated issues, cap ${TOTAL_CAP}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          jq -c --slurpfile seen /tmp/all.json \
+            --argjson easy "$EASY" --argjson easyCap "$EASY_CAP" --argjson cur "$CURATED" --argjson totCap "$TOTAL_CAP" '
+            def complete:
+              ((.body // "") | (contains("## Context") and contains("## Acceptance criteria") and contains("## How to verify") and contains("## Time estimate")))
+              and ((.files // []) | length > 0)
+              and ((.verify // "") | length > 0);
+            def unseen:
+              (.id | "<!-- roadmap:" + . + " -->") as $m
+              | ([$seen[0][] | select((.body // "") | contains($m))] | length) == 0;
+
+            (
+              [ .items[] | select(.status == "ready") | select(complete) | select(unseen) ] +
+              [ .items[] | select(.status == "backlog") | select(complete) | select(unseen) ]
+            ) as $candidates
+            | reduce $candidates[] as $item (
+                { picked: [], e: $easy, c: $cur };
+                if .c >= $totCap then .
+                elif ($item.difficulty == "easy" and .e >= $easyCap) then .
+                else
+                  {
+                    picked: (.picked + [$item]),
+                    e: (if $item.difficulty == "easy" then .e + 1 else .e end),
+                    c: (.c + 1)
+                  }
+                end
+              )
+            | .picked
+          ' .github/roadmap.json > /tmp/picked.json
+
+          COUNT="$(jq 'length' /tmp/picked.json)"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "decision=skip" >> "$GITHUB_OUTPUT"
+            echo "reason=no unfiled eligible item within caps (open=${CURATED}/${TOTAL_CAP}, easy=${EASY}/${EASY_CAP})" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "decision=file" >> "$GITHUB_OUTPUT"
+          echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
+
+      - name: File queued issues
+        if: steps.pick.outputs.decision == 'file' && steps.validate.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SLA="$(jq -r '.meta.reply_sla_hours // 24' .github/roadmap.json)"
+          OWNER="$(jq -r '.meta.owner // "the maintainer"' .github/roadmap.json)"
+          LEN="$(jq 'length' /tmp/picked.json)"
+
+          for idx in $(seq 0 $((LEN - 1))); do
+            ITEM="$(jq -c ".[$idx]" /tmp/picked.json)"
+            ITEM_ID="$(jq -r .id <<< "$ITEM")"
+            ITEM_TITLE="$(jq -r .title <<< "$ITEM")"
+            ITEM_LABELS="$(jq -r '.labels | join(",")' <<< "$ITEM")"
+            ITEM_TIME="$(jq -r '.time_estimate // "unstated"' <<< "$ITEM")"
+            jq -r .body <<< "$ITEM" > /tmp/body.md
+
+            {
+              cat /tmp/body.md
+              printf '\n---\n\n'
+              printf '⏱️ **%s** · Maintained by @%s — expect a reply within %s hours.\n\n' \
+                "$ITEM_TIME" "$OWNER" "$SLA"
+              printf 'Not sure where to start? Comment and ask; that is a valid first contribution. Open a PR with `Closes #<issue-number>` when ready.\n\n'
+              printf '<!-- roadmap:%s -->\n' "$ITEM_ID"
+            } > /tmp/final-body.md
+
+            IFS=',' read -r -a LABELS <<< "$ITEM_LABELS"
+            ARGS=()
+            for l in "${LABELS[@]}"; do
+              if [ -n "$l" ]; then
+                gh label create "$l" >/dev/null 2>&1 || true
+                ARGS+=(--label "$l")
               fi
-              gh issue comment "$NUM" --body "Shipped in ${RELEASE_TAG}. Thanks for the suggestion — credit is in the release notes."
-              gh issue close "$NUM" --reason completed
-              echo "closed #$NUM (${ID})" >> "$GITHUB_STEP_SUMMARY"
-            done < <(jq -r --arg m "$MARKER" '.[] | select((.body // "") | contains($m)) | .number' /tmp/open2.json)
-          done < /tmp/shipped.txt
+            done
+
+            URL="$(gh issue create --title "$ITEM_TITLE" --body-file /tmp/final-body.md "${ARGS[@]}")"
+            echo "- filed \`${ITEM_ID}\`: ${URL}" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Report a skipped or dry-run decision
+        if: steps.pick.outputs.decision == 'skip' || steps.validate.outputs.dry_run == 'true'
+        env:
+          DECISION: ${{ steps.pick.outputs.decision }}
+          REASON: ${{ steps.pick.outputs.reason }}
+          COUNT: ${{ steps.pick.outputs.count }}
+        run: |
+          if [ "$DECISION" = "skip" ]; then
+            echo "no issue filed — ${REASON}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "dry run — would file ${COUNT:-0} issue(s):" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '.[] | "- `" + .id + "`: " + .title' /tmp/picked.json >> "$GITHUB_STEP_SUMMARY"
+          fi

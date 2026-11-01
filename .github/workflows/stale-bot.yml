@@ -1,0 +1,33 @@
+name: Stale Bot — Nudge, Never Close
+
+on:
+  schedule:
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    name: Mark idle issues and PRs stale (never close them)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark stale
+        uses: actions/stale@v9
+        with:
+          days-before-stale: 60
+          days-before-close: -1
+          stale-issue-label: "stale"
+          exempt-issue-labels: "pinned,roadmap,help wanted,good first issue,area/security"
+          stale-pr-label: "stale"
+          exempt-pr-labels: "pinned,dependencies,area/security"
+          stale-issue-message: >
+            This issue has had no activity for 60 days. It stays open — leave a short note if
+            you are still working on it, or update `.github/roadmap.json` if the plan changed.
+          stale-pr-message: >
+            This pull request has had no activity for 60 days. It stays open; rebase or comment
+            when ready for review.
+          operations-per-run: 60

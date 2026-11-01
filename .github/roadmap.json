@@ -14,7 +14,8 @@
       "status: filed   -> bot created it; the marker lives in the issue body",
       "status: shipped -> bot may comment + close its own issue, naming the release",
       "Morrow's constraint: a contributor without Windows must be able to finish any 'easy' item. Do not mark an entry 'ready' if it needs `npm run tauri dev`, the Rust tests, or native dialogs."
-    ]
+    ],
+    "open_curated_cap": 4
   },
   "items": [
     {
@@ -37,43 +38,9 @@
       "note": "Closed as invalid: src/markdown-render.ts is already covered by tests/markdown-preview.test.ts."
     },
     {
-      "id": "morrow-002-samples-tests",
-      "title": "test: assert the bundled samples stay valid and in sync",
-      "status": "backlog",
-      "difficulty": "easy",
-      "labels": [
-        "good first issue",
-        "javascript"
-      ],
-      "time_estimate": "~1-2 hours",
-      "files": [
-        "tests/samples.test.ts",
-        "src/samples.ts"
-      ],
-      "verify": "npx vitest run tests/samples.test.ts",
-      "body": "## Context\n\n`src/samples.ts` holds the `PYTHON_SAMPLE` and `MARKDOWN_SAMPLE` strings shown on first launch \u2014 the first thing every new user sees. Nothing tests them, so a broken fence or a stray tab becomes a visible bug in the product's first impression.\n\n**Blocked on a decision, not on work.** The obvious criterion \u2014 \"balanced code fences in `MARKDOWN_SAMPLE`\" \u2014 cannot be written: that string contains **no** code fences today. Asserting an even count of a thing that does not appear is a test that passes for the wrong reason and would block anyone who later adds a fence-bearing sample. Choose one, then move this back to `ready`:\n\n1. Assert what is actually true now: both exports are non-empty, `PYTHON_SAMPLE` has no tab indentation and ends with a newline, and the two samples differ.\n2. Add a code fence to `MARKDOWN_SAMPLE` first (a product change), then assert balance.\n\nRuns on any OS.\n\n## What to change\n\n- `tests/samples.test.ts` (new), depending on which option above is chosen.\n\n## Acceptance criteria\n\n- [ ] Both exports are non-empty strings\n- [ ] `PYTHON_SAMPLE` contains no tab indentation and ends with a newline\n- [ ] The two samples are not identical\n- [ ] Fence handling matches whichever decision is recorded on this issue\n\n## How to verify\n\n```bash\nnpx vitest run tests/samples.test.ts\nnpm test\n```\n\n## Where to start\n\n1. `src/samples.ts` \u2014 54 lines, two exports.\n2. `tests/encoding.test.ts` \u2014 the simplest existing test file to copy the style from.\n\n## Time estimate\n\n~1 hour once the question above is answered.\n"
-    },
-    {
-      "id": "morrow-003-encoding-edge-cases",
-      "title": "test: extend encoding coverage to BOMs, mixed line endings and round-trips",
-      "status": "ready",
-      "difficulty": "easy",
-      "labels": [
-        "good first issue",
-        "javascript"
-      ],
-      "time_estimate": "~2-4 hours",
-      "files": [
-        "tests/encoding.test.ts",
-        "src/encoding.ts"
-      ],
-      "verify": "npx vitest run tests/encoding.test.ts",
-      "body": "## Context\n\n`src/encoding.ts` does `decodeFile` / `encodeFile` / `inspectLineEndings` over raw `Uint8Array`, and it is where \"my file got mangled\" bugs come from. `tests/encoding.test.ts` has 15 passing tests \u2014 this issue extends it rather than starting it, so you are working from examples.\n\nRuns on any OS.\n\n## What to change\n\n- `tests/encoding.test.ts`: add cases for the three edges below.\n\n## Acceptance criteria\n\nThree of the five edges originally listed here are **already covered**, so they are not repeated:\nBOM round-tripping (4 encodings \u00d7 3 line endings), CRLF byte-for-byte survival, `mixed: true`,\nand invalid bytes throwing a clear error all have tests today.\n\n- [ ] A file of exactly `MAX_FILE_BYTES` is accepted by `decodeFile`, and one byte over is refused with the 20 MiB message\n- [ ] The same limit on the write path: `encodeFile` output at exactly `MAX_FILE_BYTES` succeeds, one byte over is refused\n- [ ] A UTF-32 LE file (starts `ff fe 00 00`) is refused with the \"UTF-32 is not supported\" message rather than decoded as UTF-16 LE. `decodeFile` special-cases this; nothing tests it\n- [ ] Each new case follows the existing file's style: bare `it(...)`, no new dependency, no snapshot\n\n## How to verify\n\n```bash\nnpx vitest run tests/encoding.test.ts\nnpm test\nnpm run build\n```\n\n## Where to start\n\n1. `src/encoding.ts` \u2014 102 lines, four exports. `MAX_FILE_BYTES` is line 4, the UTF-32 check is around line 34.\n2. `tests/encoding.test.ts` \u2014 15 existing tests show the fixture style; the \"rejects invalid bytes\u2026\" case is the closest model for the refusal tests.\n\n## Time estimate\n\n~2-3 hours. Note the 20 MiB fixtures: build the boundary case with a length assertion rather than allocating 20 MiB twice if you can.\n"
-    },
-    {
       "id": "morrow-004-contributing",
       "title": "docs: add CONTRIBUTING.md with a Windows-free development path",
-      "status": "backlog",
+      "status": "shipped",
       "difficulty": "easy",
       "labels": [
         "good first issue",
@@ -84,12 +51,13 @@
         "CONTRIBUTING.md"
       ],
       "verify": "grep -n 'npm test' CONTRIBUTING.md",
-      "body": "## Context\n\nGitHub's community profile reports `contributing: MISSING` for this repo (`health_percentage: 42`), and the README's Contributing section is four lines. `SECURITY.md` is also absent, which matters because `src/arena.ts` takes an API key. The bigger problem: nothing tells a visitor that most of Morrow is platform-neutral TypeScript they can work on without Windows or MSVC.\n\n## What to change\n\n- `CONTRIBUTING.md` (new) covering: the Windows-free path (`npm ci`, `npm test`, `npm run test:e2e`), what genuinely requires Windows (`npm run tauri dev`, `cargo test`, native dialogs), commit style, and the reply SLA.\n- `SECURITY.md` (private disclosure via GitHub Security Advisories; no bounty).\n- `.github/ISSUE_TEMPLATE/bug_report.yml`, `config.yml`, `PULL_REQUEST_TEMPLATE.md`, `CODE_OF_CONDUCT.md`.\n\n## Acceptance criteria\n\n- [ ] A Linux/macOS contributor can follow it to a green `npm test`\n- [ ] It names what cannot be done off Windows rather than implying Windows is required for everything\n- [ ] `community/profile` health reaches 100 and reports a security policy\n\n## How to verify\n\n```bash\nnpm ci && npm test\ncurl -s https://api.github.com/repos/RANJITHROSAN17/morrow-editor/community/profile | grep health_percentage\n```\n\n## Where to start\n\n1. `README.md` \u00a7\"Development and testing\" \u2014 the commands already exist there.\n2. `.github/workflows/windows.yml` \u2014 shows the full gate CI runs.\n\n## Time estimate\n\n~1 hour."
+      "body": "## Context\n\nGitHub's community profile reports `contributing: MISSING` for this repo (`health_percentage: 42`), and the README's Contributing section is four lines. `SECURITY.md` is also absent, which matters because `src/arena.ts` takes an API key. The bigger problem: nothing tells a visitor that most of Morrow is platform-neutral TypeScript they can work on without Windows or MSVC.\n\n## What to change\n\n- `CONTRIBUTING.md` (new) covering: the Windows-free path (`npm ci`, `npm test`, `npm run test:e2e`), what genuinely requires Windows (`npm run tauri dev`, `cargo test`, native dialogs), commit style, and the reply SLA.\n- `SECURITY.md` (private disclosure via GitHub Security Advisories; no bounty).\n- `.github/ISSUE_TEMPLATE/bug_report.yml`, `config.yml`, `PULL_REQUEST_TEMPLATE.md`, `CODE_OF_CONDUCT.md`.\n\n## Acceptance criteria\n\n- [ ] A Linux/macOS contributor can follow it to a green `npm test`\n- [ ] It names what cannot be done off Windows rather than implying Windows is required for everything\n- [ ] `community/profile` health reaches 100 and reports a security policy\n\n## How to verify\n\n```bash\nnpm ci && npm test\ncurl -s https://api.github.com/repos/RANJITHROSAN17/morrow-editor/community/profile | grep health_percentage\n```\n\n## Where to start\n\n1. `README.md` \u00a7\"Development and testing\" \u2014 the commands already exist there.\n2. `.github/workflows/windows.yml` \u2014 shows the full gate CI runs.\n\n## Time estimate\n\n~1 hour.",
+      "release": "v0.4.0"
     },
     {
       "id": "morrow-005-release",
       "title": "chore(ci): publish the built installer as a tagged preview release",
-      "status": "backlog",
+      "status": "shipped",
       "difficulty": "medium",
       "labels": [
         "help wanted"
@@ -100,7 +68,158 @@
         "CHANGELOG.md"
       ],
       "verify": "npm run build",
-      "body": "## Context\n\n`windows.yml` already builds the NSIS installer and writes `SHA256SUMS.txt`, then uploads them as an artifact that expires, and there are **0 releases and 0 tags**. The installer already has a checksum but no permanent home.\n\n## What to change\n\n- `.github/workflows/windows.yml`: on a `v*` tag, create a release with the `.exe` and `SHA256SUMS.txt` attached.\n- Release notes must lead with the README's existing honesty line: early preview, unsigned, keep backups.\n\n## Acceptance criteria\n\n- [ ] A tag push produces a release with both assets\n- [ ] The asset downloads without a GitHub login\n- [ ] The release body says \"unsigned preview\", not \"production\"\n- [ ] `CHANGELOG.md` moves 0.4.0 from \"unreleased preview\" to a dated heading\n\n## How to verify\n\n```bash\ngit tag v0.4.0 && git push origin v0.4.0\ngh release view v0.4.0\n```\n\n## Where to start\n\n1. `.github/workflows/windows.yml` \u2014 the build, checksum and upload steps already exist.\n2. `CHANGELOG.md` \u2014 the release text is already written.\n\n## Time estimate\n\n~1-2 hours."
+      "body": "## Context\n\n`windows.yml` already builds the NSIS installer and writes `SHA256SUMS.txt`, then uploads them as an artifact that expires, and there are **0 releases and 0 tags**. The installer already has a checksum but no permanent home.\n\n## What to change\n\n- `.github/workflows/windows.yml`: on a `v*` tag, create a release with the `.exe` and `SHA256SUMS.txt` attached.\n- Release notes must lead with the README's existing honesty line: early preview, unsigned, keep backups.\n\n## Acceptance criteria\n\n- [ ] A tag push produces a release with both assets\n- [ ] The asset downloads without a GitHub login\n- [ ] The release body says \"unsigned preview\", not \"production\"\n- [ ] `CHANGELOG.md` moves 0.4.0 from \"unreleased preview\" to a dated heading\n\n## How to verify\n\n```bash\ngit tag v0.4.0 && git push origin v0.4.0\ngh release view v0.4.0\n```\n\n## Where to start\n\n1. `.github/workflows/windows.yml` \u2014 the build, checksum and upload steps already exist.\n2. `CHANGELOG.md` \u2014 the release text is already written.\n\n## Time estimate\n\n~1-2 hours.",
+      "release": "v0.4.0"
+    },
+    {
+      "id": "morrow-003-encoding-edge-cases",
+      "title": "test: extend encoding coverage to BOMs, mixed line endings and round-trips",
+      "status": "ready",
+      "difficulty": "easy",
+      "labels": [
+        "good first issue",
+        "help wanted",
+        "roadmap",
+        "area/editor"
+      ],
+      "time_estimate": "~2-4 hours",
+      "files": [
+        "tests/encoding.test.ts",
+        "src/encoding.ts"
+      ],
+      "verify": "npx vitest run tests/encoding.test.ts",
+      "body": "## Context\n\n`src/encoding.ts` does `decodeFile` / `encodeFile` / `inspectLineEndings` over raw `Uint8Array`, and it is where \"my file got mangled\" bugs come from. `tests/encoding.test.ts` has 15 passing tests \u2014 this issue extends it rather than starting it, so you are working from examples.\n\nRuns on any OS.\n\n## What to change\n\n- `tests/encoding.test.ts`: add cases for the three edges below.\n\n## Acceptance criteria\n\nThree of the five edges originally listed here are **already covered**, so they are not repeated:\nBOM round-tripping (4 encodings \u00d7 3 line endings), CRLF byte-for-byte survival, `mixed: true`,\nand invalid bytes throwing a clear error all have tests today.\n\n- [ ] A file of exactly `MAX_FILE_BYTES` is accepted by `decodeFile`, and one byte over is refused with the 20 MiB message\n- [ ] The same limit on the write path: `encodeFile` output at exactly `MAX_FILE_BYTES` succeeds, one byte over is refused\n- [ ] A UTF-32 LE file (starts `ff fe 00 00`) is refused with the \"UTF-32 is not supported\" message rather than decoded as UTF-16 LE. `decodeFile` special-cases this; nothing tests it\n- [ ] Each new case follows the existing file's style: bare `it(...)`, no new dependency, no snapshot\n\n## How to verify\n\n```bash\nnpx vitest run tests/encoding.test.ts\nnpm test\nnpm run build\n```\n\n## Where to start\n\n1. `src/encoding.ts` \u2014 102 lines, four exports. `MAX_FILE_BYTES` is line 4, the UTF-32 check is around line 34.\n2. `tests/encoding.test.ts` \u2014 15 existing tests show the fixture style; the \"rejects invalid bytes\u2026\" case is the closest model for the refusal tests.\n\n## Time estimate\n\n~2-3 hours. Note the 20 MiB fixtures: build the boundary case with a length assertion rather than allocating 20 MiB twice if you can.\n"
+    },
+    {
+      "id": "morrow-006-samples-integrity-tests",
+      "title": "test(editor): verify bundled first-launch samples and secret-scan cleanliness",
+      "status": "ready",
+      "difficulty": "easy",
+      "labels": [
+        "good first issue",
+        "help wanted",
+        "roadmap",
+        "area/editor"
+      ],
+      "time_estimate": "~1-2 hours",
+      "files": [
+        "tests/samples.test.ts",
+        "src/samples.ts"
+      ],
+      "verify": "npx vitest run tests/samples.test.ts",
+      "body": "## Context\n\n`src/samples.ts` defines `PYTHON_SAMPLE` and `MARKDOWN_SAMPLE` \u2014 the documents every newcomer sees on first launch. Neither export currently has unit tests, so an accidental tab character, missing trailing newline, or sample token that trips `findPotentialSecrets()` in `src/sensitive-text.ts` ships silently.\n\nRuns on **any OS** (no Windows, Rust, or MSVC required).\n\n## What to change\n\n- `tests/samples.test.ts` (new): assert structural and privacy invariants on both sample documents.\n\n## Acceptance criteria\n\n- [ ] Both `PYTHON_SAMPLE` and `MARKDOWN_SAMPLE` are non-empty, distinct strings ending with `\\n` and containing no `\\r`\n- [ ] `PYTHON_SAMPLE` uses space indentation (no `\\t` characters)\n- [ ] `MARKDOWN_SAMPLE` starts with a top-level `# ` heading and builds cleanly via `buildMarkdownPreview()`\n- [ ] `findPotentialSecrets(PYTHON_SAMPLE, MARKDOWN_SAMPLE)` returns `[]` so first launch never triggers a false secret warning\n\n## How to verify\n\n```bash\nnpx vitest run tests/samples.test.ts\nnpm test\nnpm run build\n```\n\n## Where to start\n\n1. `src/samples.ts` \u2014 54 lines, two string exports.\n2. `src/sensitive-text.ts` \u2014 `findPotentialSecrets()`.\n\n## Time estimate\n\n~1-2 hours."
+    },
+    {
+      "id": "morrow-007-ai-fim-context-and-sanitization",
+      "title": "feat(ai): guard FIM context slicing at surrogate-pair boundaries and strip chatty prefixes",
+      "status": "ready",
+      "difficulty": "easy",
+      "labels": [
+        "good first issue",
+        "help wanted",
+        "roadmap",
+        "area/ai"
+      ],
+      "time_estimate": "~2-3 hours",
+      "files": [
+        "src/ai.ts",
+        "tests/ai.test.ts"
+      ],
+      "verify": "npx vitest run tests/ai.test.ts",
+      "body": "## Context\n\n`src/ai.ts` builds local Ollama FIM requests using `text.slice(Math.max(0, cursor - AI_CONTEXT_BEFORE), cursor)` and `text.slice(cursor, cursor + AI_CONTEXT_AFTER)`. In UTF-16 JavaScript strings, slicing directly at `cursor - 3500` or `cursor + 1200` can split a surrogate pair (emoji or non-BMP symbol), sending lone surrogates that break JSON encoding or confuse local models. In addition, `firstSuggestion()` drops lines starting with ```` ``` ```` or `<|`, but does not reject `<fim_` / `[INST]` control markers.\n\nRuns on **any OS**.\n\n## What to change\n\n- `src/ai.ts`: adjust `buildCompletionRequest()` slice start/end by \u00b11 code unit if a boundary lands in the middle of a UTF-16 surrogate pair, and harden `firstSuggestion()` against `<fim_` / `[INST]` / `</s>` control prefixes.\n- `tests/ai.test.ts`: add unit tests for surrogate-pair boundaries at `AI_CONTEXT_BEFORE` / `AI_CONTEXT_AFTER` and control-token filtering.\n\n## Acceptance criteria\n\n- [ ] `buildCompletionRequest()` never produces lone high/low surrogates in `prompt` or `suffix` when valid UTF-16 input is passed\n- [ ] `firstSuggestion()` returns `''` for `<fim_middle>`, `</s>`, and `[INST]` artifacts while preserving valid indented code completions\n- [ ] `npx vitest run tests/ai.test.ts` and `npm run build` pass\n\n## How to verify\n\n```bash\nnpx vitest run tests/ai.test.ts\nnpm test\nnpm run build\n```\n\n## Where to start\n\n1. `src/ai.ts` \u2014 `buildCompletionRequest()` and `firstSuggestion()` (lines 11-31).\n2. `tests/ai.test.ts` \u2014 existing unit test structure.\n\n## Time estimate\n\n~2-3 hours."
+    },
+    {
+      "id": "morrow-008-workspace-quick-open-ranking",
+      "title": "feat(workspace): deterministic Quick Open filename and path ranking across large workspaces",
+      "status": "ready",
+      "difficulty": "medium",
+      "labels": [
+        "help wanted",
+        "roadmap",
+        "area/workspace"
+      ],
+      "time_estimate": "~3-4 hours",
+      "files": [
+        "src/workspace.ts",
+        "src/workbench.ts",
+        "tests/workspace.test.ts"
+      ],
+      "verify": "npx vitest run tests/workspace.test.ts",
+      "body": "## Context\n\nMorrow indexes up to `MAX_WORKSPACE_FILES` (5,000 files) in `src/workspace.ts` for Quick Open (`Ctrl+P`). Plain substring filtering ranks `docs/archive/old-main.ts.bak` ahead of `src/main.ts` when typing `main.ts`, making navigation feel noisy in multi-folder projects.\n\nRuns on **any OS**.\n\n## What to change\n\n- `src/workspace.ts`: export a pure `rankWorkspaceFiles(files: WorkspaceFile[], query: string, limit = 50): WorkspaceFile[]` scoring exact basename match > basename prefix > path-segment/camelCase boundary > ordered subsequence, breaking ties by shorter relative path and locale order.\n- `src/workbench.ts`: wire Quick Open filtering through `rankWorkspaceFiles`.\n- `tests/workspace.test.ts`: test ranking order, case-insensitivity, empty-query behaviour, and 5,000-entry performance (`< 25 ms`).\n\n## Acceptance criteria\n\n- [ ] Typing `main.ts` ranks `src/main.ts` above `tests/e2e/domain.ts` or `docs/main.ts.md`\n- [ ] Empty query returns top entries deterministically capped at `limit`\n- [ ] Pure function tested in `tests/workspace.test.ts` with zero new dependencies\n\n## How to verify\n\n```bash\nnpx vitest run tests/workspace.test.ts\nnpm test\nnpm run build\n```\n\n## Where to start\n\n1. `src/workspace.ts` \u2014 `WorkspaceFile` and `compareEntries`.\n2. `tests/workspace.test.ts` \u2014 existing workspace fixture helpers.\n\n## Time estimate\n\n~3-4 hours."
+    },
+    {
+      "id": "morrow-009-sensitive-text-placeholder-hygiene",
+      "title": "feat(security): ignore placeholder examples in sensitive-text heuristic while catching sk-/Slack tokens",
+      "status": "backlog",
+      "difficulty": "easy",
+      "labels": [
+        "good first issue",
+        "help wanted",
+        "roadmap",
+        "area/security"
+      ],
+      "time_estimate": "~2 hours",
+      "files": [
+        "src/sensitive-text.ts",
+        "tests/sensitive-text.test.ts"
+      ],
+      "verify": "npx vitest run tests/sensitive-text.test.ts",
+      "body": "## Context\n\n`src/sensitive-text.ts` warns before sending text containing likely credentials while returning labels only (never the matched secret). Currently `password = YOUR_PASSWORD_HERE` or `api_key: <insert-key>` in a README triggers `credential assignment`, while `sk-...` / `xoxb-...` token prefixes are missed.\n\nRuns on **any OS**.\n\n## What to change\n\n- `src/sensitive-text.ts`: ignore obvious placeholder values (`YOUR_...`, `<...>`, `example`, `changeme`, `xxx...`, `$ENV_VAR`) on credential assignments, and add rules for OpenAI/Anthropic (`sk-...`) and Slack (`xox[baprs]-...`) token prefixes.\n- `tests/sensitive-text.test.ts`: cover positive detections, placeholder non-triggers, and assert returned strings never echo input tokens.\n\n## Acceptance criteria\n\n- [ ] Placeholders (`YOUR_API_KEY`, `<token>`, `changeme`) do not trigger false warnings\n- [ ] `sk-` and `xoxb-` token patterns are detected and return label names only\n- [ ] `npx vitest run tests/sensitive-text.test.ts` passes\n\n## How to verify\n\n```bash\nnpx vitest run tests/sensitive-text.test.ts\nnpm test\n```\n\n## Time estimate\n\n~2 hours."
+    },
+    {
+      "id": "morrow-010-change-review-diff-stats",
+      "title": "feat(editor): summarize added/removed line counts and reject no-op replacements in change-review",
+      "status": "backlog",
+      "difficulty": "medium",
+      "labels": [
+        "help wanted",
+        "roadmap",
+        "area/editor"
+      ],
+      "time_estimate": "~2-3 hours",
+      "files": [
+        "src/change-review.ts",
+        "tests/change-review.test.ts"
+      ],
+      "verify": "npx vitest run tests/change-review.test.ts",
+      "body": "## Context\n\n`src/change-review.ts` powers Morrow's literal replacement review gate (`makeReviewTarget`, `reviewDiff`). Reviewing large selections is calmer when the header reports exact `+added / -removed` line counts and refuses identical no-op replacements up front.\n\nRuns on **any OS**.\n\n## What to change\n\n- `src/change-review.ts`: add `summarizeReviewDiff(changes: Change[] | null)` returning `{ addedLines, removedLines, unchangedLines }`, and reject identical normalized replacements with a clear message.\n- `tests/change-review.test.ts`: cover line counts, bounded fallback (`null`), and identical-text refusal.\n\n## Acceptance criteria\n\n- [ ] Identical original vs replacement text throws a clear actionable message\n- [ ] `summarizeReviewDiff` reports exact line counts and handles `null` safely\n- [ ] `npx vitest run tests/change-review.test.ts` passes\n\n## How to verify\n\n```bash\nnpx vitest run tests/change-review.test.ts\nnpm test\n```\n\n## Time estimate\n\n~2-3 hours."
+    },
+    {
+      "id": "morrow-011-storage-quota-and-schema-guard",
+      "title": "fix(storage): degrade gracefully when localStorage exceeds quota during session recovery",
+      "status": "backlog",
+      "difficulty": "medium",
+      "labels": [
+        "help wanted",
+        "roadmap",
+        "area/editor"
+      ],
+      "time_estimate": "~2-3 hours",
+      "files": [
+        "src/storage.ts",
+        "tests/storage.test.ts"
+      ],
+      "verify": "npx vitest run tests/storage.test.ts",
+      "body": "## Context\n\nOpening several multi-megabyte files with session recovery enabled can exceed WebView2 / browser `localStorage` quota (~5 MiB), throwing `QuotaExceededError` during autosave.\n\nRuns on **any OS**.\n\n## What to change\n\n- `src/storage.ts`: return a structured `{ saved: boolean; quotaExceeded: boolean }` status from session persistence instead of throwing uncaught exceptions, omitting oversized buffer bodies while keeping tab metadata when quota is exceeded.\n- `tests/storage.test.ts`: simulate `QuotaExceededError` and verify `aiEnabled` remains session-only (`false` on reload).\n\n## Acceptance criteria\n\n- [ ] `QuotaExceededError` never crashes typing or tab switching\n- [ ] Privacy invariant (`aiEnabled` never restored as `true`) still holds\n- [ ] `npx vitest run tests/storage.test.ts` passes\n\n## How to verify\n\n```bash\nnpx vitest run tests/storage.test.ts\nnpm test\n```\n\n## Time estimate\n\n~2-3 hours."
+    },
+    {
+      "id": "morrow-012-external-file-change-detection",
+      "title": "feat(windows): detect external on-disk edits on focus and prompt before overwriting",
+      "status": "backlog",
+      "difficulty": "hard",
+      "labels": [
+        "help wanted",
+        "roadmap",
+        "area/windows"
+      ],
+      "time_estimate": "~4-6 hours",
+      "files": [
+        "src/platform.ts",
+        "src/workbench.ts",
+        "tests/platform.test.ts"
+      ],
+      "verify": "npx vitest run tests/platform.test.ts && npm run build",
+      "body": "## Context\n\n`SavedDocument` in `src/storage.ts` already tracks `hash: string | null`, `savedText`, and `path`. When an external tool (`git checkout`, formatter) modifies an open file on Windows, refocusing Morrow should detect hash divergence cleanly.\n\n## What to change\n\n- `src/platform.ts` & `src/workbench.ts`: re-check on-disk hash for active native tabs on window focus; offer one-click Reload for clean tabs and a conflict banner for dirty tabs so unsaved edits are never clobbered.\n- `tests/platform.test.ts`: mock platform file reads to test clean-tab reload prompt vs dirty-tab conflict preservation.\n\n## Acceptance criteria\n\n- [ ] Dirty tabs are never silently overwritten when disk bytes change\n- [ ] Clean tabs surface a clear reload notice when the on-disk hash changes\n- [ ] Unit tests in `tests/platform.test.ts` pass on Linux/macOS/Windows\n\n## How to verify\n\n```bash\nnpx vitest run tests/platform.test.ts\nnpm test\nnpm run build\n```\n\n## Time estimate\n\n~4-6 hours."
     }
   ]
 }

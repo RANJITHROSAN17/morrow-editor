@@ -141,3 +141,37 @@ describe('contributor queue manifest', () => {
     }
   });
 });
+
+
+describe('roadmap automation helpers', () => {
+  it('detects zero source/version drift on the committed repository', async () => {
+    // @ts-expect-error plain ESM helper script
+    const bots = await import('../scripts/roadmap-bots.js');
+    const rm = bots.loadRoadmap();
+    expect(bots.detectDrift(rm)).toEqual([]);
+    const status = bots.renderStatusMarkdown(rm, [
+      { number: 15, state: 'open', body: 'task\n<!-- roadmap:morrow-003-encoding-edge-cases -->' },
+    ]);
+    expect(status.startsWith(bots.STATUS_MARKER)).toBe(true);
+    expect(status).toContain('#15');
+  });
+
+  it('classifies Morrow issues and PR paths by editor/AI/Windows area', async () => {
+    // @ts-expect-error plain ESM helper script
+    const bots = await import('../scripts/roadmap-bots.js');
+    const labels = bots.classifyIssue('Ollama FIM completion hangs on Windows', 'WebView2 error');
+    expect(labels).toContain('area/ai');
+    expect(labels).toContain('area/windows');
+    expect(labels).toContain('type/bug');
+
+    const ctx = bots.renderPrContext(bots.loadRoadmap(), ['src/ai.ts'], 'Fixes surrogate boundary');
+    expect(ctx).toContain('morrow-007-ai-fim-context-and-sanitization');
+  });
+
+  it('checks --state all and triggers on issue close so solved tasks replenish without duplicates', async () => {
+    const { readFileSync } = await import('node:fs');
+    const yml = readFileSync(resolve('.github/workflows/contributor-queue.yml'), 'utf8');
+    expect(yml).toMatch(/gh issue list --state all/);
+    expect(yml).toMatch(/issues:\s*\n\s*types:\s*\[closed\]/);
+  });
+});
