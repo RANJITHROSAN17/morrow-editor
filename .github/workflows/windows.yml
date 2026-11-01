@@ -18,8 +18,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: npm
@@ -57,7 +57,7 @@ jobs:
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
             "$hash  $($_.Name)" | Out-File -Append -Encoding utf8 "$dir/SHA256SUMS.txt"
           }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Morrow-windows-x64-unsigned
           path: |
@@ -76,7 +76,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: Morrow-windows-x64-unsigned
           path: dist
@@ -84,7 +84,7 @@ jobs:
       # The tag gets an installer a normal person can download. Without this the NSIS build is an
       # artifact that expires, and the only documented install path stays "install Rust and MSVC".
       - name: Publish
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/*-setup.exe
