@@ -44,6 +44,18 @@ fn parse_expected(value: &str) -> Result<ExpectedVersion<'_>, String> {
     }
     Err("Invalid expected file version.".into())
 }
+fn sha256_hex(data: impl AsRef<[u8]>) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let digest = Sha256::digest(data);
+    let raw: &[u8] = digest.as_ref();
+    let mut out = String::with_capacity(raw.len() * 2);
+    for &b in raw {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    out
+}
+
 fn parse_force(value: &str) -> Result<bool, String> {
     match value { "0" => Ok(false), "1" => Ok(true), _ => Err("Invalid overwrite confirmation.".into()) }
 }
@@ -73,7 +85,7 @@ fn atomic_write(path: &Path, data: &[u8], expected: &str, force: bool) -> Result
                 // Bounded and no-follow read, including if the file grows after stat.
                 let bytes = bounded_read(path, MAX_FILE_BYTES)
                     .map_err(|_| "MORROW_FILE_CHANGED: cannot verify the file on disk".to_string())?;
-                let current = format!("{:x}", Sha256::digest(&bytes));
+                let current = sha256_hex(&bytes);
                 if current != hash { return Err("MORROW_FILE_CHANGED: file differs from the version you opened".into()); }
             }
         }
@@ -411,7 +423,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("file.txt");
         fs::write(&path, b"original").unwrap();
-        let old_hash = format!("{:x}", Sha256::digest(b"original"));
+        assert_eq!(sha256_hex(b""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        let old_hash = sha256_hex(b"original");
         fs::write(&path, b"changed by another app").unwrap();
         assert!(atomic_write(&path, b"new", &old_hash, false).unwrap_err().contains("MORROW_FILE_CHANGED"));
         assert_eq!(fs::read(&path).unwrap(), b"changed by another app");
@@ -522,7 +535,7 @@ mod tests {
         let path = dir.path().join("existing.txt");
         let original = b"first\r\nline\n";
         fs::write(&path, original).unwrap();
-        let hash = format!("{:x}", Sha256::digest(original));
+        let hash = sha256_hex(original);
         atomic_write(&path, "updated 🦉".as_bytes(), &hash, false).unwrap();
         assert_eq!(fs::read(&path).unwrap(), "updated 🦉".as_bytes());
         assert!(atomic_write(&path, b"stale", &hash, false).unwrap_err().contains("MORROW_FILE_CHANGED"));
