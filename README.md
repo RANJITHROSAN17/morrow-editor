@@ -30,6 +30,14 @@ Morrow is a Windows text and code editor designed to be approachable for everyda
 
 *Browser preview of the editor. The sample is not a saved file; Windows-native integration is not shown.*
 
+## Choose your first run
+
+- **Use the Windows app:** [download the latest preview and its checksum file](https://github.com/RANJITHROSAN17/morrow-editor/releases/latest). No Node.js or Rust is needed for a packaged installer. It is unsigned; keep backups and use non-critical files.
+- **Evaluate the UI or contribute without Windows:** use the [browser UI preview](#browser-ui-preview); it does not verify native desktop behavior.
+- **Build the native app:** follow [Windows app from source](#windows-app-from-source) and its toolchain prerequisites.
+
+For your first desktop session, open a disposable text file, edit, save and reopen it before enabling optional AI features. Compare the installer’s SHA-256 against the attached `SHA256SUMS.txt`; in PowerShell use `Get-FileHash .\Morrow_0.4.0_x64-setup.exe -Algorithm SHA256`. A matching checksum verifies the downloaded bytes against that release’s checksum, not publisher identity or safety.
+
 ## Features
 
 - **A familiar editor:** tabs, open/save dialogs, undo and redo, find and replace, line numbers, word wrap, and dark and light themes.
@@ -149,6 +157,10 @@ each one names the file, the acceptance criteria and a command that proves it.
 
 - [Report a bug or suggest an improvement](https://github.com/RANJITHROSAN17/morrow-editor/issues)
 - [Changelog](CHANGELOG.md) · [Product research](docs/PRODUCT-RESEARCH-2026.md) · [README comparison](docs/README-RESEARCH-2026-11-01.md)
+
+## Maintainer
+
+**[Ranjith Rosan](https://github.com/RANJITHROSAN17)** maintains Morrow, the Windows text and code editor in this repository. Community contributions and third-party components retain their respective credits; see [third-party notices](THIRD_PARTY_NOTICES.md).
 
 ## License
 
