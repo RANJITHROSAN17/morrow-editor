@@ -142,21 +142,74 @@ export async function loadSession(): Promise<Session | null> {
   return stored;
 }
 
-// Serialise writes so an older, slower snapshot cannot overwrite a newer one.
-let queue: Promise<void> = Promise.resolve();
-export function saveSession(session: Session | null): Promise<void> {
-  const operation = async () => {
-    const db = await database();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction('session', 'readwrite');
-      if (session) tx.objectStore('session').put(session, 'current');
-      else tx.objectStore('session').delete('current');
+/** A metadata-only record means a newer snapshot could not preserve its text. */
+export async function hasPartialSessionMetadata(): Promise<boolean> {
+  const db = await database();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction('session', 'readonly').objectStore('session').get('metadata-only');
+    request.onsuccess = () => resolve(request.result != null);
+    request.onerror = () => reject(request.error || new Error('Unable to read recovery metadata.'));
+  });
+}
+
+// A quota fallback keeps metadata separately; it is not a complete recovery copy.
+// Never replace the last complete snapshot with omitted text.
+export interface SessionSaveResult { saved: boolean; quotaExceeded: boolean; metadataSaved: boolean; }
+export interface SessionMetadata {
+  version: 1;
+  activeId: string;
+  documents: Omit<SavedDocument, 'text' | 'savedText'>[];
+}
+
+function sessionMetadata(session: Session): SessionMetadata {
+  return { version: 1, activeId: session.activeId, documents: session.documents.map(({ text: _text, savedText: _savedText, ...metadata }) => metadata) };
+}
+
+function writeSession(db: IDBDatabase, session: Session | null, metadataOnly = false): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction('session', 'readwrite');
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error || new Error('Unable to save recovery data.'));
       tx.onabort = () => reject(tx.error || new Error('Recovery transaction was interrupted.'));
-    });
+      try {
+        const store = tx.objectStore('session');
+        if (metadataOnly && session) store.put(sessionMetadata(session), 'metadata-only');
+        else {
+          if (session) store.put(session, 'current');
+          else store.delete('current');
+          store.delete('metadata-only');
+        }
+      } catch (error) {
+        // A synchronous failure after another request must not commit a partial transaction.
+        try { tx.abort(); } catch { /* already aborted */ }
+        reject(error);
+      }
+    } catch (error) { reject(error); }
+  });
+}
+
+// Serialise writes so an older, slower snapshot cannot overwrite a newer one.
+let queue: Promise<SessionSaveResult> = Promise.resolve({ saved: true, quotaExceeded: false, metadataSaved: false });
+export function saveSession(session: Session | null): Promise<SessionSaveResult> {
+  const operation = async (): Promise<SessionSaveResult> => {
+    let db: IDBDatabase;
+    try { db = await database(); }
+    catch (error) { return { saved: false, quotaExceeded: (error as { name?: string })?.name === 'QuotaExceededError', metadataSaved: false }; }
+    try {
+      await writeSession(db, session);
+      return { saved: true, quotaExceeded: false, metadataSaved: false };
+    } catch (error) {
+      const quotaExceeded = (error as { name?: string })?.name === 'QuotaExceededError';
+      let metadataSaved = false;
+      if (quotaExceeded && session) {
+        try { await writeSession(db, session, true); metadataSaved = true; } catch { /* Keep the old complete snapshot. */ }
+      }
+      return { saved: false, quotaExceeded, metadataSaved };
+    }
   };
-  const next = queue.catch(() => {}).then(operation);
+  const next = queue.then(operation, operation);
   queue = next;
   return next;
 }

@@ -88,3 +88,22 @@ describe('native save IPC safety metadata', () => {
     await expect(writeTo(ref, bytes, 'draft.txt', null)).rejects.toBeInstanceOf(ExternalChangeError);
   });
 });
+
+describe('focus-time native file checking', () => {
+  it('compares the bounded native read with the opened hash and distinguishes read failures', async () => {
+    const { checkNativeFileChange } = await import('../src/platform');
+    const { sha256 } = await import('../src/encoding');
+    const original = new TextEncoder().encode('original');
+    const hash = await sha256(original);
+    vi.mocked(invoke).mockResolvedValueOnce(original.buffer).mockResolvedValueOnce(new TextEncoder().encode('external edit').buffer).mockRejectedValueOnce(new Error('access denied'));
+    expect(await checkNativeFileChange('C:\\notes\\draft.txt', hash)).toBe('unchanged');
+    expect(await checkNativeFileChange('C:\\notes\\draft.txt', hash)).toBe('changed');
+    expect(await checkNativeFileChange('C:\\notes\\draft.txt', hash)).toBe('unavailable');
+    expect(invoke).toHaveBeenCalledWith('workspace_read_file', { path: 'C:\\notes\\draft.txt', maxBytes: MAX_FILE_BYTES });
+  });
+  it('treats an unknown hash as unverified, not unchanged', async () => {
+    const { checkNativeFileChange } = await import('../src/platform');
+    vi.mocked(invoke).mockResolvedValue(new TextEncoder().encode('text').buffer);
+    expect(await checkNativeFileChange('C:\\notes\\draft.txt', null)).toBe('changed');
+  });
+});
