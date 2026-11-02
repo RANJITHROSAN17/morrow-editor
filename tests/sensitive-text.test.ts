@@ -18,3 +18,39 @@ describe('local credential warning', () => {
     expect(findPotentialSecrets('some-new-provider-token-unknown-format')).toEqual([]);
   });
 });
+
+describe('placeholder and provider-token detection', () => {
+  it('ignores recognizable credential-assignment placeholders', () => {
+    for (const value of ['YOUR_API_KEY', '<insert-key>', '<token>', 'changeme', 'xxxxxxxx', '$ENV_VAR', 'example', 'example-api-key', 'EXAMPLE_TOKEN']) {
+      expect(findPotentialSecrets(`api_key = "${value}"`), value).toEqual([]);
+    }
+  });
+
+  it('checks every assignment in a field, before or after placeholders', () => {
+    for (const field of [
+      'password = YOUR_PASSWORD_HERE\npassword = real-secret-123456',
+      'password = <token>\npassword = real-secret-123456',
+      'password = real-secret-123456\npassword = YOUR_PASSWORD_HERE',
+      'password = YOUR_PASSWORD_HERE\npassword = changeme\npassword = real-secret-123456',
+    ]) expect(findPotentialSecrets(field)).toEqual(['credential assignment']);
+    expect(findPotentialSecrets('password = YOUR_PASSWORD_HERE', 'password = real-secret-123456')).toEqual(['credential assignment']);
+  });
+
+  it('does not treat arbitrary example-prefixed credentials as placeholders', () => {
+    expect(findPotentialSecrets('password = exampleRealSecret123')).toEqual(['credential assignment']);
+    expect(findPotentialSecrets('password = example-private-value-123')).toEqual(['credential assignment']);
+  });
+
+  it('detects OpenAI and Slack token prefixes and returns only labels', () => {
+    const openai = `sk-${'a'.repeat(20)}`;
+    const slack = `xoxb-${'b'.repeat(20)}`;
+    const result = findPotentialSecrets(openai, slack);
+    expect(result).toEqual(['OpenAI token pattern', 'Slack token pattern']);
+    expect(JSON.stringify(result)).not.toContain(openai);
+    expect(JSON.stringify(result)).not.toContain(slack);
+    for (const type of ['b', 'a', 'p', 'r', 's']) {
+      expect(findPotentialSecrets(`xox${type}-${'z'.repeat(20)}`)).toContain('Slack token pattern');
+    }
+    expect(findPotentialSecrets('sk-short', 'xoxb-short')).toEqual([]);
+  });
+});
