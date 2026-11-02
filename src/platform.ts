@@ -28,6 +28,15 @@ export async function readNative(path: string): Promise<OpenedFile> {
   return { name: fileName(path), bytes, ref: { kind: 'native', path } };
 }
 
+/** Check only an already-authorized native path; keep read failures distinct from no change. */
+export async function checkNativeFileChange(path: string, expectedHash: string | null): Promise<'changed' | 'unchanged' | 'unavailable'> {
+  try {
+    const file = await readNative(path);
+    const hash = await sha256(file.bytes);
+    return expectedHash !== null && hash === expectedHash ? 'unchanged' : 'changed';
+  } catch { return 'unavailable'; }
+}
+
 async function readBrowser(handle: FileSystemFileHandle): Promise<OpenedFile> {
   const file = await handle.getFile();
   checkSize(file.size);

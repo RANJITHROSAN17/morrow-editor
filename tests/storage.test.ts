@@ -89,3 +89,79 @@ describe('recovery snapshot validation', () => {
     expect(isValidSession({ version: 1, activeId: '1', documents: [{ ...document('1'), hash: 12 }] })).toBe(false);
   });
 });
+
+describe('quota-safe session persistence', () => {
+  it('preserves the last full snapshot, reports quota, and stores metadata separately when possible', async () => {
+    const values = new Map<string, unknown>();
+    let failure: 'none' | 'quota' | 'async-quota' | 'all' | 'other' = 'none';
+    const db = {
+      onversionchange: null,
+      close() {},
+      transaction() {
+        let aborted = false;
+        let asyncError: DOMException | null = null;
+        const pending = new Map(values);
+        const tx = {
+          error: null as DOMException | null,
+          oncomplete: null as (() => void) | null,
+          onerror: null as (() => void) | null,
+          onabort: null as (() => void) | null,
+          abort() { aborted = true; },
+          objectStore() {
+            return {
+              put(value: unknown, key: string) {
+                if (failure === 'all' || (failure === 'quota' && key === 'current')) throw new DOMException('Full', 'QuotaExceededError');
+                if (failure === 'other' && key === 'current') throw new DOMException('Blocked', 'SecurityError');
+                if (failure === 'async-quota' && key === 'current') asyncError = new DOMException('Full', 'QuotaExceededError');
+                pending.set(key, structuredClone(value));
+              },
+              delete(key: string) { pending.delete(key); },
+            };
+          },
+        };
+        queueMicrotask(() => {
+          if (asyncError) { tx.error = asyncError; tx.onerror?.(); return; }
+          if (aborted) { tx.onabort?.(); return; }
+          values.clear(); for (const [key, value] of pending) values.set(key, value);
+          tx.oncomplete?.();
+        });
+        return tx;
+      },
+    };
+    vi.stubGlobal('indexedDB', { open: () => {
+      const request = { result: db, onsuccess: null as (() => void) | null, onerror: null, onblocked: null, onupgradeneeded: null };
+      queueMicrotask(() => request.onsuccess?.());
+      return request;
+    } });
+    const { saveSession } = await import('../src/storage');
+    const doc = {
+      id: 'tab', name: 'draft.txt', path: 'C:\\draft.txt', text: 'old draft', savedText: 'previous file',
+      encoding: 'UTF-8' as const, savedEncoding: 'UTF-8' as const, lineEnding: 'LF' as const, savedLineEnding: 'LF' as const,
+      mixedLineEndings: false, hash: null, selection: 0, languageOverride: null, sample: false, wasBrowserFile: false,
+    };
+    const original = { version: 1 as const, activeId: 'tab', documents: [doc] };
+    const newer = { ...original, documents: [{ ...doc, text: 'new unsaved draft' }] };
+    expect(await saveSession(original)).toEqual({ saved: true, quotaExceeded: false, metadataSaved: false });
+    failure = 'quota';
+    expect(await saveSession(newer)).toEqual({ saved: false, quotaExceeded: true, metadataSaved: true });
+    expect(values.get('current')).toEqual(original);
+    expect(values.get('metadata-only')).toMatchObject({ activeId: 'tab', documents: [{ name: 'draft.txt' }] });
+    expect(JSON.stringify(values.get('metadata-only'))).not.toContain('draft"');
+    expect(values.get('metadata-only')).not.toHaveProperty('documents.0.text');
+    expect(values.get('metadata-only')).not.toHaveProperty('documents.0.savedText');
+    failure = 'async-quota';
+    expect(await saveSession(newer)).toEqual({ saved: false, quotaExceeded: true, metadataSaved: true });
+    expect(values.get('current')).toEqual(original);
+    failure = 'all';
+    expect(await saveSession(newer)).toEqual({ saved: false, quotaExceeded: true, metadataSaved: false });
+    expect(values.get('current')).toEqual(original);
+    failure = 'other';
+    expect(await saveSession(newer)).toEqual({ saved: false, quotaExceeded: false, metadataSaved: false });
+    failure = 'none';
+    expect(await saveSession(newer)).toEqual({ saved: true, quotaExceeded: false, metadataSaved: false });
+    expect(values.get('current')).toEqual(newer);
+    expect(values.has('metadata-only')).toBe(false);
+    expect((await saveSession(null)).saved).toBe(true);
+    expect(values.size).toBe(0);
+  });
+});

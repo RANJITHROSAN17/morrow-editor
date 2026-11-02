@@ -10,9 +10,9 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { allLanguages, clearGhost, createEditorState, findLanguage, hasGhost, indentCompartment, languageCompartment, languageLabel, showGhost, wrapCompartment } from './editor';
 import { decodeFile, encodeFile, sha256, type LineEnding, type TextEncoding } from './encoding';
-import { chooseSaveTarget, desktop, ExternalChangeError, pickFiles, readNative, refPath, writeTo, type FileRef, type OpenedFile, type OpenFailure } from './platform';
+import { checkNativeFileChange, chooseSaveTarget, desktop, ExternalChangeError, pickFiles, readNative, refPath, writeTo, type FileRef, type OpenedFile, type OpenFailure } from './platform';
 import { complete, listModels, DEFAULT_MODEL } from './ai';
-import { loadSession, loadSettings, saveSession, saveSettings, type SavedDocument, type Session, type Settings } from './storage';
+import { hasPartialSessionMetadata, loadSession, loadSettings, saveSession, saveSettings, type SavedDocument, type Session, type Settings } from './storage';
 import { MARKDOWN_SAMPLE, PYTHON_SAMPLE } from './samples';
 import { icon } from './icons';
 import { makeReviewTarget, reviewTargetIsCurrent, type ReviewTarget } from './change-review';
@@ -66,6 +66,11 @@ class MorrowApp {
   private languageSerial = 0;
   private recoveryTimer = 0;
   private recoveryFailed = false;
+  private recoveryQuotaExceeded = false;
+  private recoveryMetadataSaved = false;
+  private partialRecovery = false;
+  private diskChecks = new Map<string, 'changed' | 'unavailable'>();
+  private diskCheckSerial = 0;
   private toastTimer = 0;
   private aiTimer = 0;
   private aiGeneration = 0;
@@ -110,6 +115,10 @@ class MorrowApp {
     if (this.settings.recovery) {
       try {
         const session = await loadSession();
+        // A later quota-limited snapshot may have metadata but no current text.
+        // Do not overwrite either record with the older restored session.
+        this.partialRecovery = await hasPartialSessionMetadata();
+        if (this.partialRecovery) { this.recoveryBlocked = true; this.recoveryFailed = true; }
         if (session?.documents.length) {
           // Do not silently drop tabs from large saved sessions.
           for (const saved of session.documents) this.docs.push(this.restoreDoc(saved));
@@ -122,8 +131,8 @@ class MorrowApp {
       }
     } else if (!this.settingsReadFailed) {
       // A previous deletion could have failed. Retry only when an explicit off setting was readable.
-      try { await saveSession(null); }
-      catch { this.recoveryCleanupFailed = true; }
+      const result = await saveSession(null);
+      if (!result.saved) this.recoveryCleanupFailed = true;
     }
     if (!restored) {
       // Examples are real editable buffers, clearly labelled and never silently saved to disk.
@@ -144,7 +153,7 @@ class MorrowApp {
     this.view.focus();
     if (this.recoveryFailed) this.toast('Session recovery is unavailable. Save your work to a file.');
     this.scheduleRecovery();
-    if (desktop) await this.bindDesktop();
+    if (desktop) { await this.bindDesktop(); void this.checkActiveDisk(); }
     else this.bindBrowserDrop();
   }
 
@@ -211,6 +220,7 @@ class MorrowApp {
     if (update.docChanged) {
       doc.revision++;
       this.renderFiles();
+      this.renderDiskChange();
       this.updateStatus();
       this.updateMarkdownPreview();
       this.scheduleRecovery();
@@ -250,8 +260,80 @@ class MorrowApp {
     if (!this.settings.recovery || !this.view) return true;
     if (this.recoveryBlocked) return false;
     window.clearTimeout(this.recoveryTimer);
-    try { await saveSession(this.snapshot()); this.recoveryFailed = false; this.renderRecoveryStatus(); this.renderStorageWarning(); return true; }
-    catch { if (!this.recoveryFailed) this.toast('Could not save a local recovery copy. Save your work to a file.'); this.recoveryFailed = true; this.renderRecoveryStatus(); this.renderStorageWarning(); return false; }
+    try {
+      const result = await saveSession(this.snapshot());
+      if (!result.saved && !this.recoveryFailed) this.toast('Could not save a local recovery copy. Save your work to a file.');
+      this.recoveryFailed = !result.saved;
+      this.recoveryQuotaExceeded = result.quotaExceeded;
+      this.recoveryMetadataSaved = result.metadataSaved;
+      this.renderRecoveryStatus(); this.renderStorageWarning();
+      return result.saved;
+    } catch {
+      if (!this.recoveryFailed) this.toast('Could not save a local recovery copy. Save your work to a file.');
+      this.recoveryFailed = true; this.recoveryQuotaExceeded = false; this.recoveryMetadataSaved = false;
+      this.renderRecoveryStatus(); this.renderStorageWarning();
+      return false;
+    }
+  }
+
+  private async checkActiveDisk(): Promise<void> {
+    const serial = ++this.diskCheckSerial;
+    if (!desktop || !this.view || !this.activeId) return;
+    const doc = this.active;
+    if (doc.ref?.kind !== 'native' || doc.saving) { this.renderDiskChange(); return; }
+    const path = doc.ref.path, hash = doc.hash;
+    const result = await checkNativeFileChange(path, hash);
+    if (serial !== this.diskCheckSerial || this.activeId !== doc.id || doc.ref?.kind !== 'native' || doc.ref.path !== path || doc.hash !== hash || doc.saving) return;
+    if (result === 'unchanged') this.diskChecks.delete(doc.id);
+    else this.diskChecks.set(doc.id, result);
+    this.renderDiskChange();
+  }
+
+  private renderDiskChange(): void {
+    const banner = $('#disk-change-warning');
+    const doc = this.activeId ? this.active : undefined;
+    const status = doc && this.diskChecks.get(doc.id);
+    const reload = $<HTMLButtonElement>('#disk-change-reload');
+    banner.hidden = !status;
+    reload.hidden = status !== 'changed' || !doc || this.dirty(doc);
+    if (!doc || !status) return;
+    $('#disk-change-message').textContent = status === 'unavailable'
+      ? `Cannot check “${doc.name}” on disk. Your editor text is unchanged; save will still check for conflicts.`
+      : this.dirty(doc)
+        ? `“${doc.name}” changed on disk. Your unsaved edits are preserved; save a copy or review the conflict when saving.`
+        : `“${doc.name}” changed on disk. Reload to see the latest contents.`;
+  }
+
+  private async reloadActiveFromDisk(): Promise<void> {
+    const doc = this.active;
+    if (doc.ref?.kind !== 'native' || this.dirty(doc) || doc.saving || this.diskChecks.get(doc.id) !== 'changed') return;
+    const path = doc.ref.path, revision = doc.revision, oldHash = doc.hash;
+    ++this.diskCheckSerial;
+    try {
+      // Read again on click; the disk may have changed since the notification.
+      const file = await readNative(path);
+      const hash = await sha256(file.bytes);
+      const decoded = decodeFile(file.bytes);
+      if (this.activeId !== doc.id || doc.ref?.kind !== 'native' || doc.ref.path !== path || doc.revision !== revision || doc.hash !== oldHash || doc.saving || this.dirty(doc)) {
+        this.toast('The document changed while reloading. Your edits were kept.');
+        return;
+      }
+      const cursor = Math.min(doc.state.selection.main.head, decoded.text.length);
+      doc.state = createEditorState(decoded.text, this.settings, (update) => this.onEditorUpdate(update), cursor);
+      doc.savedDoc = doc.state.doc;
+      doc.encoding = doc.savedEncoding = decoded.encoding;
+      doc.lineEnding = doc.savedLineEnding = decoded.lineEnding;
+      doc.mixedLineEndings = decoded.mixedLineEndings;
+      doc.hash = hash; doc.revision++;
+      this.diskChecks.delete(doc.id);
+      this.cancelAi(); this.view.setState(doc.state); this.applyEditorPreferences();
+      if (this.findOpen) { openSearchPanel(this.view); this.updateSearchQuery(); }
+      this.renderAll(); void this.applyLanguage(); this.scheduleRecovery(); this.view.focus();
+      this.toast(`Reloaded ${doc.name} from disk.`);
+    } catch (error) {
+      this.diskChecks.set(doc.id, 'unavailable'); this.renderDiskChange();
+      this.toast(`Could not reload ${doc.name}: ${this.errorText(error)}`);
+    }
   }
 
   private populateLanguages(): void {
@@ -288,6 +370,7 @@ class MorrowApp {
     void this.applyLanguage();
     this.scheduleRecovery();
     this.view.focus();
+    void this.checkActiveDisk();
   }
 
   private newFile(): void {
@@ -455,6 +538,7 @@ class MorrowApp {
       }
       if (!sameTarget) doc.displayPath = null;
       doc.ref = target.ref; doc.name = target.name; doc.hash = digest; doc.sample = false;
+      this.diskChecks.delete(doc.id); ++this.diskCheckSerial;
       if (target.ref.kind === 'native') this.recordRecent(target.ref.path);
       doc.savedDoc = textAtSave; doc.savedEncoding = encodingAtSave; doc.savedLineEnding = endingAtSave; doc.mixedLineEndings = false;
       this.renderAll(); if (doc.id === this.activeId) void this.applyLanguage();
@@ -500,7 +584,7 @@ class MorrowApp {
   private async closeDoc(id: string): Promise<void> {
     const doc = this.docs.find((item) => item.id === id); if (!doc || !(await this.confirmClose(doc))) return;
     const index = this.docs.indexOf(doc); const wasActive = doc.id === this.activeId;
-    this.docs.splice(index, 1);
+    this.docs.splice(index, 1); this.diskChecks.delete(doc.id); ++this.diskCheckSerial;
     if (!this.docs.length) this.docs.push(this.makeDoc('Untitled'));
     if (wasActive) {
       // switchDoc needs a valid old active document while clearing ghost.
@@ -509,7 +593,7 @@ class MorrowApp {
       if (this.findOpen) { openSearchPanel(this.view); this.updateSearchQuery(); }
       void this.applyLanguage(); this.view.focus();
     }
-    this.renderAll(); this.scheduleRecovery();
+    this.renderAll(); this.scheduleRecovery(); void this.checkActiveDisk();
   }
 
   private fileBadge(name: string): HTMLElement {
@@ -622,8 +706,8 @@ class MorrowApp {
     const messages: string[] = [];
     if (this.settingsReadFailed) messages.push('Settings could not be read. AI is off and recovery is paused; any existing recovery copy is untouched. Save your files and restart after fixing storage.');
     else if (this.settingsSaveFailed) messages.push('Settings could not be saved. Changes, including recovery preferences, may revert after restarting. AI always starts off.');
-    if (this.recoveryBlocked) messages.push('The previous recovery session could not be read. Its stored copy has not been overwritten. Save your current work and restart after fixing storage.');
-    else if (this.recoveryFailed && this.settings.recovery) messages.push('A recovery copy could not be saved. Save your work to a file.');
+    if (this.recoveryBlocked) messages.push(this.partialRecovery ? 'The latest recovery attempt stored tab metadata only; unsaved text was not saved. Any restored complete snapshot may be older. Recovery is paused to preserve the stored copies; save your work to files.' : 'The previous recovery session could not be read. Its stored copy has not been overwritten. Save your current work and restart after fixing storage.');
+    else if (this.recoveryFailed && this.settings.recovery) messages.push(this.recoveryQuotaExceeded ? `A recovery copy could not be saved because storage is full. ${this.recoveryMetadataSaved ? 'Only tab metadata was stored; it cannot restore unsaved text. ' : ''}The previous complete copy was left untouched. Save your work to a file.` : 'A recovery copy could not be saved. Save your work to a file.');
     if (this.recoveryCleanupFailed && !this.settings.recovery) messages.push('Recovery is off, but an old recovery copy could not be removed and may still contain text.');
     if (this.recentClearFailed) messages.push('Recent file paths could not be cleared from local storage and may still be present after restart.');
     const warning = $('#storage-warning');
@@ -640,7 +724,7 @@ class MorrowApp {
 
   private renderAll(): void {
     if (!this.view) return;
-    this.renderFiles(); this.updateStatus(); this.renderRecoveryStatus(); this.renderStorageWarning(); this.renderAiStatus(); this.updateMarkdownPreview();
+    this.renderFiles(); this.renderDiskChange(); this.updateStatus(); this.renderRecoveryStatus(); this.renderStorageWarning(); this.renderAiStatus(); this.updateMarkdownPreview();
   }
 
   private updateMarkdownPreview(): void {
@@ -919,6 +1003,8 @@ class MorrowApp {
     });
     $('#setting-recovery').addEventListener('click', () => { void this.toggleRecovery(); });
     $('#retry-recovery-cleanup').addEventListener('click', () => { void this.retryRecoveryCleanup(); });
+    $('#disk-change-reload').addEventListener('click', () => { void this.reloadActiveFromDisk(); });
+    window.addEventListener('focus', () => { void this.checkActiveDisk(); });
     $('#ai-toggle').addEventListener('click', () => { void this.toggleAi(); });
     $('#test-ai').addEventListener('click', () => { void this.checkAi(); });
     $('#model-name').addEventListener('change', (event) => {
@@ -945,9 +1031,11 @@ class MorrowApp {
 
   private async removeRecoveryCopy(): Promise<boolean> {
     try {
-      await saveSession(null);
+      const result = await saveSession(null);
+      if (!result.saved) throw new Error('Could not remove recovery data.');
       this.recoveryCleanupFailed = false;
       this.recoveryBlocked = false;
+      this.partialRecovery = false;
       this.recoveryFailed = false;
       return true;
     } catch {
@@ -973,7 +1061,7 @@ class MorrowApp {
     this.renderStorageWarning();
     try {
       if (this.settings.recovery && this.recoveryBlocked) {
-        const choice = await this.confirm('Remove the old recovery copy?', 'Morrow could not read the previous recovery session. Turning recovery off will try to delete that copy, which may contain unsaved work. Save your current files first.', [
+        const choice = await this.confirm('Remove the old recovery copy?', 'Recovery is paused to protect stored data. Turning recovery off will try to delete the recovery copies, which may contain unsaved work. Save your current files first.', [
           { id: 'cancel', label: 'Cancel' }, { id: 'remove', label: 'Turn off and remove', style: 'danger' },
         ], 'RECOVERY NEEDS ATTENTION');
         if (choice !== 'remove') return;

@@ -219,7 +219,7 @@ test('failed recovery deletion remains visible and can be retried', async ({ pag
     (window as TestWindow).__failDelete = true;
     const original = IDBObjectStore.prototype.delete;
     IDBObjectStore.prototype.delete = function (key) {
-      if (this.name === 'session' && (window as TestWindow).__failDelete) throw new DOMException('Delete failed', 'UnknownError');
+      if (this.name === 'session' && key === 'current' && (window as TestWindow).__failDelete) throw new DOMException('Delete failed', 'UnknownError');
       return original.call(this, key);
     };
   });
@@ -312,4 +312,44 @@ test('recovery keeps more than 100 tabs rather than silently truncating the snap
       query.onerror = () => reject(query.error);
     };
   })), { timeout: 8_000 }).toEqual({ count: 101, resaved: true });
+});
+
+test('quota failure keeps the previous snapshot, saves only metadata, and warns on restart', async ({ page }) => {
+  await page.addInitScript(() => {
+    const original = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (value, key) {
+      if (this.name === 'session' && key === 'current' && sessionStorage.getItem('simulate-quota') === 'yes') {
+        throw new DOMException('Storage full', 'QuotaExceededError');
+      }
+      return original.call(this, value, key);
+    };
+  });
+  await ready(page);
+  await writeDraft(page, 'Previously saved draft');
+  await page.evaluate(() => sessionStorage.setItem('simulate-quota', 'yes'));
+  await page.keyboard.insertText(' new unsaved text');
+  await expect(page.locator('#storage-warning')).toContainText('Only tab metadata was stored');
+  await expect(page.locator('#storage-warning')).toContainText('cannot restore unsaved text');
+  await page.keyboard.press('Control+n');
+  await page.keyboard.insertText('another new draft');
+  await expect(page.locator('.cm-content')).toContainText('another new draft');
+  const stored = await page.evaluate(async () => new Promise<{ current: { documents: { text: string }[] }; metadata: { documents: object[] } }>((resolve, reject) => {
+    const request = indexedDB.open('morrow-local-session-v1', 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result, tx = db.transaction('session', 'readonly'), store = tx.objectStore('session');
+      const current = store.get('current'), metadata = store.get('metadata-only');
+      tx.oncomplete = () => { db.close(); resolve({ current: current.result, metadata: metadata.result }); };
+      tx.onerror = () => reject(tx.error);
+    };
+  }));
+  expect(stored.current.documents.some((doc) => doc.text.includes('Previously saved draft'))).toBe(true);
+  expect(stored.current.documents.some((doc) => doc.text.includes('new unsaved text'))).toBe(false);
+  expect(stored.metadata.documents.every((doc) => !('text' in doc) && !('savedText' in doc))).toBe(true);
+  page.once('dialog', (dialog) => { void dialog.accept(); });
+  await page.reload();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
+  await expect(page.locator('#storage-warning')).toContainText('restored complete snapshot may be older');
+  await expect(page.locator('#recovery-status')).toContainText('Recovery paused');
+  await expect(page.locator('.cm-content')).toContainText('Previously saved draft');
 });
