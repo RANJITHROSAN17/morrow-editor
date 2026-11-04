@@ -422,6 +422,7 @@ Sized for a solo maintainer with occasional contributors. Dates are deliberately
 - Add an update check (manual or automatic with consent), or explicitly document that there is none.
 - Consolidate docs: keep the new scope banner on `docs/ROADMAP-PROPOSED.md` (added on this branch), confirm no current document presents it as Morrow's plan, and align README, CHANGELOG and release metadata.
 - Add a benchmark harness for cold start, open 1/5/20 MiB, search and save; record results per release.
+- Resolve or document the open Dependabot alert on the default branch. GitHub reported one moderate alert on 4 November 2026; `npm audit` was clean locally, so check the Rust/Cargo alerts (the user guide already documents the Linux `glib` advisory).
 
 #### Phase 1 — Data safety (2–3 weeks)
 
