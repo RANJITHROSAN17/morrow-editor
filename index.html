@@ -93,6 +93,32 @@
         <div class="assistant-steps"><div><span>01</span><p>Install and start <strong>Ollama</strong> on your PC.</p></div><div><span>02</span><p>Download a code model in your terminal:</p></div><code>ollama pull qwen2.5-coder:1.5b</code><div><span>03</span><p>Turn on suggestions above. Press <kbd>Tab</kbd> to accept, <kbd>Esc</kbd> to dismiss.</p></div></div>
         <label class="model-label" for="model-name">MODEL NAME</label><input id="model-name" class="input" value="qwen2.5-coder:1.5b" spellcheck="false"><button id="test-ai" class="outline-button"><span data-icon="refresh"></span> Check connection</button>
         <p class="model-note">Model download is separate (about 1 GB for the suggested model). Performance depends on your PC.</p>
+        <div class="assistant-divider"></div>
+        <section class="ai-actions" aria-labelledby="ai-actions-title">
+          <h3 id="ai-actions-title">AI actions on a selection</h3>
+          <p class="model-note">Select text, choose an action, then review the diff. This is separate from inline suggestions; nothing is applied until you accept it.</p>
+          <div class="ai-action-grid" role="group" aria-label="AI actions">
+            <button type="button" class="ai-action" data-ai-action="improve" aria-pressed="true">Improve</button>
+            <button type="button" class="ai-action" data-ai-action="grammar" aria-pressed="false">Fix grammar</button>
+            <button type="button" class="ai-action" data-ai-action="shorten" aria-pressed="false">Shorten</button>
+            <button type="button" class="ai-action" data-ai-action="expand" aria-pressed="false">Expand</button>
+            <button type="button" class="ai-action" data-ai-action="summarize" aria-pressed="false">Summarize</button>
+            <button type="button" class="ai-action" data-ai-action="bullets" aria-pressed="false">Bullet points</button>
+            <button type="button" class="ai-action" data-ai-action="explain" aria-pressed="false">Explain</button>
+            <button type="button" class="ai-action" data-ai-action="custom" aria-pressed="false">Custom</button>
+          </div>
+          <label class="model-label" for="ai-action-instruction">INSTRUCTION (OPTIONAL)</label>
+          <input id="ai-action-instruction" class="input" maxlength="2000" autocomplete="off" spellcheck="false" placeholder="e.g. keep it under 100 words (required for Custom)">
+          <div class="ai-action-run-row">
+            <button type="button" id="ai-action-run" class="primary-action">Run on selection</button>
+            <button type="button" id="ai-action-cancel" class="text-button" hidden>Cancel</button>
+          </div>
+          <p class="dialog-status" id="ai-action-status" role="status" aria-live="polite">Select text, then choose an action.</p>
+          <section class="ai-action-result" id="ai-action-result" hidden aria-label="AI answer">
+            <div class="ai-action-result-heading"><strong>Answer</strong><button type="button" id="ai-action-copy" class="text-button">Copy</button></div>
+            <pre id="ai-action-output" class="ai-action-output" tabindex="0" aria-label="AI answer text"></pre>
+          </section>
+        </section>
         <div class="assistant-divider"></div><h3>Arena &amp; change review</h3><p class="model-note">Use Arena in your browser, or optionally send a selected excerpt to its API.</p><button class="outline-button" data-action="arena"><span data-icon="globe"></span> Open Arena tools</button><button class="outline-button" data-action="review-change">Review a pasted change</button>
       </aside>
     </main>

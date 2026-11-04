@@ -23,6 +23,7 @@ export interface WorkbenchHost {
   targetIsCurrent(target: ReviewTarget): boolean;
   applyReview(target: ReviewTarget, replacement: string): void;
   focusEditor(): void;
+  showAiActions(): void;
   lineCount(): number;
   goToLine(line: number, column?: number): void;
   openWorkspaceFile(entry: WorkspaceFile, line?: number, column?: number): Promise<void>;
@@ -49,6 +50,7 @@ const COMMANDS: { label: string; action: string; shortcut?: string }[] = [
   { label: 'Replace in current file', action: 'replace', shortcut: 'Ctrl+H' },
   { label: 'Save file', action: 'save', shortcut: 'Ctrl+S' },
   { label: 'Save as', action: 'save-as', shortcut: 'Ctrl+Shift+S' },
+  { label: 'AI actions on selection', action: 'ai-actions' },
   { label: 'Review pasted change', action: 'review-change' },
   { label: 'Arena and change review', action: 'arena' },
   { label: 'Toggle sidebar', action: 'sidebar', shortcut: 'Ctrl+B' },
@@ -93,6 +95,7 @@ export class Workbench {
       case 'quick-open': this.showQuickOpen(); return true;
       case 'goto-line': this.showGoto(); return true;
       case 'command-palette': this.showCommands(); return true;
+      case 'ai-actions': this.host.showAiActions(); return true;
       case 'review-change': this.openReview(); return true;
       case 'arena': this.showArena(); return true;
       default: return false;
@@ -481,6 +484,9 @@ export class Workbench {
       list.append(button);
     }
   }
+
+  /** Open the existing review dialog for an explicit, user-requested AI result. */
+  previewChange(target: ReviewTarget, replacement: string): void { this.openReview(target, replacement); }
 
   private openReview(target?: ReviewTarget, initial = ''): void {
     try {

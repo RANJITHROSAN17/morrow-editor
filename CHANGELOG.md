@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — after 0.4.0
+
+- Add **reviewable AI actions on a selection**: Improve, Fix grammar, Shorten, Expand, Summarize, Bullet points, Explain and Custom. Replace actions open the existing diff review and never edit or save automatically; Explain is read-only. Only the selected text (up to 12,000 characters) and an optional instruction (up to 2,000) are sent to Ollama, after a separate per-session consent. Requests are cancellable, time out after 60 seconds, and are refused if the selection changed. Output is bounded, cleaned, and treated as untrusted text. Unit tests cover limits, delimiter collisions, output cleaning and the transport path; a real model response on Windows remains unverified.
+- Add [competitive audit, user-expectation research and AI upgrade plan](docs/COMPETITIVE-AUDIT-AND-ROADMAP-2026-11.md), covering the most-starred notepad, note-taking and AI-editor repositories, licensing cautions, a table-stakes gap list and a phased roadmap.
+
+
 ## 0.4.0 — unreleased preview
 
 - Refresh the dark and light palettes, app icon, connected tabs, editor chrome, dialogs and compact layout. Add a visible quick-open entry point and selected contrast/reduced-motion checks.
