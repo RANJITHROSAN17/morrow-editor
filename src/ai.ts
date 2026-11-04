@@ -1,6 +1,7 @@
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http';
 import { desktop } from './platform';
 import { boundedJson } from './bounded-json';
+import { buildActionRequest, cleanActionOutput, getAiAction, type AiActionId } from './ai-actions';
 
 export const DEFAULT_MODEL = 'qwen2.5-coder:1.5b';
 const ENDPOINT = 'http://127.0.0.1:11434';
@@ -74,4 +75,34 @@ export async function complete(text: string, cursor: number, model: string, sign
   }
   const result = await boundedJson(response, MAX_OLLAMA_RESPONSE_BYTES, 'Ollama response is too large.') as { response?: string };
   return firstSuggestion(result.response);
+}
+
+/** One reviewable action on an explicit selection. Nothing is applied here. */
+export async function runAction(
+  input: { selection: string; action: AiActionId; instruction?: string; model: string },
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!desktop) throw new Error('AI actions are available in the Windows desktop app, not this browser preview.');
+  const body = buildActionRequest(input);
+  const response = await nativeFetch(`${ENDPOINT}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+    maxRedirections: 0,
+  });
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const errorBody = await boundedJson(response, MAX_OLLAMA_ERROR_BYTES, 'Ollama error response is too large.') as { error?: unknown };
+      if (typeof errorBody?.error === 'string') detail = errorBody.error.replace(/[\u0000-\u001f]/gu, ' ').slice(0, 250);
+    } catch { /* Use a generic status if the error body is absent, malformed or too large. */ }
+    throw new Error(detail || `Ollama responded with HTTP ${response.status}.`);
+  }
+  const result = await boundedJson(response, MAX_OLLAMA_RESPONSE_BYTES, 'Ollama response is too large to review safely.') as { response?: unknown };
+  const kind = getAiAction(input.action)?.kind;
+  return cleanActionOutput(result?.response, {
+    original: input.selection,
+    stripWrappingFence: kind === 'replace',
+  });
 }

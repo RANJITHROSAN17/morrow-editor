@@ -44,7 +44,7 @@ For your first desktop session, open a disposable text file, edit, save and reop
 - **Code and writing:** syntax highlighting for many programming and markup formats, automatic or manual language selection, and a live, inert Markdown preview.
 - **Folders and navigation:** add multiple folders to a workspace, create files and folders, search saved files across roots, and use quick open to navigate.
 - **Review before applying:** compare a pasted replacement with a selected range, explicitly accept it, and undo it. Applying a change does not automatically save the file.
-- **AI on your terms:** optional Ollama suggestions, a browser-first Arena workflow, and a separate optional Arena API panel. See [AI and privacy](#ai-and-privacy) before sharing text.
+- **AI on your terms:** optional inline suggestions, **reviewable AI actions on a selection** (improve, fix, shorten, expand, summarize, bullets, explain), a browser-first Arena workflow, and a separate optional Arena API panel. Replace actions always show a diff before anything changes. See [AI and privacy](#ai-and-privacy) before sharing text.
 - **Recovery and file awareness:** optional session recovery and checks for external file changes. Recovery is unencrypted and is **not a backup**.
 
 Morrow is not yet a full IDE: it does not provide a debugger, integrated terminal, extension marketplace, or language-server features. See the [full guide](docs/USER-GUIDE.md) for file formats, limits, shortcuts, and safety details.
@@ -156,7 +156,7 @@ Look for [`good first issue`](https://github.com/RANJITHROSAN17/morrow-editor/la
 each one names the file, the acceptance criteria and a command that proves it.
 
 - [Report a bug or suggest an improvement](https://github.com/RANJITHROSAN17/morrow-editor/issues)
-- [Changelog](CHANGELOG.md) · [Product research](docs/PRODUCT-RESEARCH-2026.md) · [README comparison](docs/README-RESEARCH-2026-11-01.md)
+- [Changelog](CHANGELOG.md) · [Product research](docs/PRODUCT-RESEARCH-2026.md) · [Competitive audit and AI upgrade plan](docs/COMPETITIVE-AUDIT-AND-ROADMAP-2026-11.md) · [README comparison](docs/README-RESEARCH-2026-11-01.md)
 
 ## Maintainer
 

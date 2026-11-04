@@ -297,6 +297,18 @@ kbd { font-family: "Segoe UI", sans-serif; }
 .outline-button { display: flex; justify-content: center; align-items: center; gap: 7px; width: 100%; height: 35px; margin: 10px 0 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 11px; font-weight: 600; }
 .outline-button:hover { background: var(--raised); }
 .model-note { font-size: 10px; color: var(--dim); }
+/* Reviewable AI actions: the model proposes, the user reviews the diff. */
+.ai-actions { margin-top: 4px; }
+.ai-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 12px 0; }
+.ai-action { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); padding: 7px 8px; font-size: 10.5px; font-weight: 600; text-align: left; }
+.ai-action:hover { color: var(--text); border-color: var(--accent-strong); }
+.ai-action[aria-pressed="true"] { color: var(--accent); border-color: var(--accent-strong); background: var(--raised); }
+.ai-actions .input { margin-bottom: 10px; }
+.ai-action-run-row { display: flex; align-items: center; gap: 8px; }
+.ai-action-run-row .primary-action { flex: 1 1 auto; }
+.ai-action-result { margin-top: 14px; border: 1px solid var(--line); border-radius: 7px; background: var(--app); padding: 10px; }
+.ai-action-result-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 11px; }
+.ai-action-output { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono, ui-monospace, monospace); font-size: 11px; line-height: 1.55; color: var(--text); }
 .statusbar { height: 28px; min-height: 28px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; background: var(--status-bg); color: var(--status-text); border-top: 1px solid var(--line); font-size: 11px; white-space: nowrap; }
 .status-left, .status-right { display: flex; align-items: center; gap: 13px; min-width: 0; }
 .status-online { display: flex; align-items: center; gap: 7px; }
@@ -377,6 +389,8 @@ textarea:focus-visible { outline: 2px solid var(--accent-strong); outline-offset
 .primary-action { padding: 9px 14px; border: 1px solid var(--primary-bg); border-radius: 7px; background: var(--primary-bg); color: var(--primary-fg); font-weight: 700; font-size: 11.5px; }
 .primary-action:hover { background: var(--primary-hover); }
 .dialog-status { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 12px 0; overflow-wrap: anywhere; }
+.dialog-status.error { color: #e4a7a0; }
+:root[data-theme="light"] .dialog-status.error { color: #a33949; }
 .search-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; align-items: end; }
 .search-controls .input { display: block; margin-top: 6px; }
 .check-label { align-self: center; color: var(--muted); font-size: 11px; }

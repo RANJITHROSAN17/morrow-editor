@@ -1,6 +1,6 @@
 # The contributor queue
 
-Pinch keeps a **small** number of fully specified `good first issue` tasks open, and a bot keeps it
+Morrow keeps a **small** number of fully specified `good first issue` tasks open, and a bot keeps it
 stocked from a manifest a human reviewed. This document is the human side of that loop.
 
 ## Why small

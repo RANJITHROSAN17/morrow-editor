@@ -11,7 +11,8 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { allLanguages, clearGhost, createEditorState, findLanguage, hasGhost, indentCompartment, languageCompartment, languageLabel, showGhost, wrapCompartment } from './editor';
 import { decodeFile, encodeFile, sha256, type LineEnding, type TextEncoding } from './encoding';
 import { checkNativeFileChange, chooseSaveTarget, desktop, ExternalChangeError, pickFiles, readNative, refPath, writeTo, type FileRef, type OpenedFile, type OpenFailure } from './platform';
-import { complete, listModels, DEFAULT_MODEL } from './ai';
+import { complete, listModels, runAction, DEFAULT_MODEL } from './ai';
+import { MAX_ACTION_SELECTION, buildActionRequest, getAiAction, type AiActionId } from './ai-actions';
 import { hasPartialSessionMetadata, loadSession, loadSettings, saveSession, saveSettings, type SavedDocument, type Session, type Settings } from './storage';
 import { MARKDOWN_SAMPLE, PYTHON_SAMPLE } from './samples';
 import { icon } from './icons';
@@ -77,6 +78,11 @@ class MorrowApp {
   private aiController: AbortController | null = null;
   private aiCooldownUntil = 0;
   private aiPanelOpen = false;
+  private aiActionId: AiActionId = 'improve';
+  private aiActionConsent = false;
+  private aiActionConsentModel = '';
+  private aiActionBusy = false;
+  private aiActionController: AbortController | null = null;
   private lastTitle = '';
   private findOpen = false;
   private findRegex = false;
@@ -95,6 +101,7 @@ class MorrowApp {
       targetIsCurrent: (target) => this.reviewIsCurrent(target),
       applyReview: (target, replacement) => this.applyReviewedChange(target, replacement),
       focusEditor: () => this.view.focus(),
+      showAiActions: () => this.showAiActions(),
       lineCount: () => this.view.state.doc.lines,
       goToLine: (line, column) => this.goToLine(line, column),
       openWorkspaceFile: (entry, line, column) => this.openWorkspaceFile(entry, line, column),
@@ -915,6 +922,141 @@ class MorrowApp {
   private cancelAi(): void {
     this.aiGeneration++; window.clearTimeout(this.aiTimer); this.aiController?.abort(); this.aiController = null;
   }
+
+  private showAiActions(): void {
+    if (!this.aiPanelOpen) this.toggleAiPanel();
+    $('#ai-actions-title').scrollIntoView({ block: 'center' });
+    const first = document.querySelector<HTMLButtonElement>('[data-ai-action="improve"]');
+    first?.focus();
+    if (!desktop) this.renderAiActionStatus('AI actions run in the Windows desktop app, not this browser preview.', true);
+    else this.renderAiActionStatus('Select text in the editor, choose an action, then run it.');
+  }
+
+  private selectAiAction(id: string): void {
+    const action = getAiAction(id);
+    if (!action) return;
+    this.aiActionId = action.id;
+    document.querySelectorAll<HTMLElement>('[data-ai-action]').forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.aiAction === action.id));
+    });
+    if (action.kind === 'replace') this.setAiActionResult(null);
+    this.renderAiActionStatus(action.kind === 'answer'
+      ? `${action.label}: the answer appears below. The document is not changed.`
+      : `${action.label}: you will review a diff before anything changes.`);
+    if (action.id === 'custom') $<HTMLInputElement>('#ai-action-instruction').focus();
+  }
+
+  private renderAiActionStatus(message: string, error = false): void {
+    const status = $('#ai-action-status');
+    status.textContent = message;
+    status.classList.toggle('error', error);
+  }
+
+  private setAiActionResult(text: string | null): void {
+    const result = $('#ai-action-result');
+    const output = $('#ai-action-output');
+    output.textContent = text ?? '';
+    result.hidden = !text;
+  }
+
+  private cancelAiAction(): void {
+    if (!this.aiActionBusy) return;
+    this.aiActionController?.abort();
+    this.renderAiActionStatus('Cancelling the AI action…');
+  }
+
+  private async copyAiActionAnswer(): Promise<void> {
+    const text = $('#ai-action-output').textContent || '';
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      this.renderAiActionStatus('Answer copied to the clipboard.');
+    } catch {
+      this.renderAiActionStatus('Could not copy automatically. Select the answer and press Ctrl+C.', true);
+    }
+  }
+
+  /**
+   * One explicit, cancellable request. Only the selected text and instruction
+   * are sent. Replace actions always open the diff review; nothing is applied
+   * or saved here.
+   */
+  private async runAiAction(): Promise<void> {
+    if (this.aiActionBusy) return;
+    const action = getAiAction(this.aiActionId);
+    if (!action) return;
+    if (!desktop) {
+      this.renderAiActionStatus('AI actions run in the Windows desktop app, not this browser preview.', true);
+      this.toast('Install the Windows desktop app to use AI actions with Ollama.');
+      return;
+    }
+    let target: ReviewTarget;
+    try { target = this.captureReviewSelection(); }
+    catch (error) { this.renderAiActionStatus(this.errorText(error), true); return; }
+    if (target.original.length > MAX_ACTION_SELECTION) {
+      this.renderAiActionStatus(`Select at most ${MAX_ACTION_SELECTION.toLocaleString()} characters for an AI action.`, true);
+      return;
+    }
+    const model = this.settings.model;
+    const instruction = $<HTMLInputElement>('#ai-action-instruction').value.trim();
+    try { buildActionRequest({ selection: target.original, action: action.id, instruction, model }); }
+    catch (error) { this.renderAiActionStatus(this.errorText(error), true); return; }
+
+    if (!this.aiActionConsent || this.aiActionConsentModel !== model) {
+      const choice = await this.confirm('Send this selection to Ollama?', `“${action.label}” sends only the ${target.original.length.toLocaleString()} selected characters and your instruction to Ollama at 127.0.0.1:11434 using “${model}”. Inline suggestions may be off; this is a separate request. A loopback address does not guarantee local processing, because Ollama can route to a cloud model. Nothing is applied automatically: you review a diff first. Morrow asks once per session per model and sends nothing when you cancel.`, [
+        { id: 'cancel', label: 'Cancel' },
+        { id: 'send', label: 'Send and review', style: 'primary' },
+      ], 'YOUR CHOICE');
+      if (choice !== 'send') { this.renderAiActionStatus('Nothing was sent.'); return; }
+      this.aiActionConsent = true;
+      this.aiActionConsentModel = model;
+    }
+
+    if (!this.reviewIsCurrent(target)) {
+      this.renderAiActionStatus('The selection changed while the request was being prepared. Nothing was sent; select the text again.', true);
+      return;
+    }
+
+    const controller = new AbortController();
+    this.aiActionController = controller;
+    this.aiActionBusy = true;
+    const runButton = $<HTMLButtonElement>('#ai-action-run');
+    runButton.disabled = true;
+    $('#ai-action-cancel').hidden = false;
+    if (action.kind === 'answer') this.setAiActionResult(null);
+    this.renderAiActionStatus(`Sending ${target.original.length.toLocaleString()} selected characters to ${model}…`);
+    let timedOut = false;
+    const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 60_000);
+    try {
+      const output = await runAction({ selection: target.original, action: action.id, instruction, model }, controller.signal);
+      if (controller.signal.aborted) return;
+      if (!output) { this.renderAiActionStatus('The model returned no usable text. Try again or choose another action.', true); return; }
+      if (action.kind === 'answer') {
+        this.setAiActionResult(output);
+        this.renderAiActionStatus(`Answer ready · ${output.length.toLocaleString()} characters · the document was not changed.`);
+        return;
+      }
+      if (!this.reviewIsCurrent(target)) {
+        this.renderAiActionStatus('The selection changed while the model was working. Nothing was applied; select the text again.', true);
+        return;
+      }
+      if (output.replace(/\r\n?/gu, '\n') === target.original.replace(/\r\n?/gu, '\n')) {
+        this.renderAiActionStatus('The model returned the same text. There is nothing to review.');
+        return;
+      }
+      this.workbench.previewChange(target, output);
+      this.renderAiActionStatus('Suggestion ready · review the diff, then apply or reject it.');
+    } catch (error) {
+      if (controller.signal.aborted && !timedOut) { this.renderAiActionStatus('AI action cancelled. Nothing was applied.'); return; }
+      this.renderAiActionStatus(timedOut ? 'The model took too long and the request was cancelled. Nothing was applied.' : `AI action failed: ${this.errorText(error)}`, true);
+    } finally {
+      window.clearTimeout(timeout);
+      if (this.aiActionController === controller) this.aiActionController = null;
+      this.aiActionBusy = false;
+      runButton.disabled = false;
+      $('#ai-action-cancel').hidden = true;
+    }
+  }
   private scheduleAi(): void {
     if (!desktop || !this.settings.aiEnabled || Date.now() < this.aiCooldownUntil) return;
     window.clearTimeout(this.aiTimer);
@@ -961,6 +1103,8 @@ class MorrowApp {
         if (!wasOpen) { menu.setAttribute('aria-expanded', 'true'); const panel = document.querySelector<HTMLElement>(`[data-menu-panel="${name}"]`); if (panel) panel.hidden = false; }
         return;
       }
+      const aiAction = target.closest<HTMLElement>('[data-ai-action]');
+      if (aiAction) { this.selectAiAction(aiAction.dataset.aiAction || ''); return; }
       const action = target.closest<HTMLElement>('[data-action]');
       if (action) { void this.handleAction(action.dataset.action || ''); return; }
       const close = target.closest<HTMLElement>('[data-close-dialog]');
@@ -1006,6 +1150,9 @@ class MorrowApp {
     $('#disk-change-reload').addEventListener('click', () => { void this.reloadActiveFromDisk(); });
     window.addEventListener('focus', () => { void this.checkActiveDisk(); });
     $('#ai-toggle').addEventListener('click', () => { void this.toggleAi(); });
+    $('#ai-action-run').addEventListener('click', () => { void this.runAiAction(); });
+    $('#ai-action-cancel').addEventListener('click', () => this.cancelAiAction());
+    $('#ai-action-copy').addEventListener('click', () => { void this.copyAiActionAnswer(); });
     $('#test-ai').addEventListener('click', () => { void this.checkAi(); });
     $('#model-name').addEventListener('change', (event) => {
       this.settings.model = (event.target as HTMLInputElement).value.trim().slice(0, 120) || DEFAULT_MODEL;

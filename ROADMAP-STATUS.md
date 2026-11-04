@@ -3,6 +3,8 @@
 Where the plan stands, what changed, and what still needs a decision. Days are counted from
 the day this file was written; adjust the dates to the actual merge day.
 
+> **Product direction (4 November 2026):** For the competitive audit, user-expectation research and the phased 0.5–1.0 upgrade plan, see [`docs/COMPETITIVE-AUDIT-AND-ROADMAP-2026-11.md`](docs/COMPETITIVE-AUDIT-AND-ROADMAP-2026-11.md). This file remains the status of the earlier 90-day repository/contributor plan.
+
 ## Day 1–30 — repository groundwork
 
 | # | Action | State | Evidence |
