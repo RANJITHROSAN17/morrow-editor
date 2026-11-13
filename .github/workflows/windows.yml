@@ -60,7 +60,7 @@ jobs:
       # Keeps the generated report available when a PR discovers a new license identifier; the
       # diagnostic is not part of a successful release artifact.
       - name: Upload failed license diagnostic
-        if: ${{ failure() && github.event_name == 'pull_request' }}
+        if: ${{ failure() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
         uses: actions/upload-artifact@v7
         with:
           name: release-license-diagnostic
