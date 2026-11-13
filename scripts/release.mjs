@@ -100,13 +100,7 @@ function licenseRecords(npmSbom, cargoMetadata) {
 function generateSbom(directory) {
   const out = resolve(ROOT, directory || 'release');
   ensureDirectory(out);
-  let npmOutput;
-  try {
-    npmOutput = run('npm', ['sbom', '--package-lock-only', '--sbom-format', 'cyclonedx']);
-  } catch (error) {
-    writeFileSync(join(out, 'SBOM-ERROR.txt'), `${error instanceof Error ? error.message : String(error)}\n`);
-    throw error;
-  }
+  const npmOutput = run('npm', ['sbom', '--package-lock-only', '--sbom-format', 'cyclonedx']);
   let npmSbom;
   try { npmSbom = JSON.parse(npmOutput); }
   catch (error) { fail(`npm sbom did not produce JSON: ${error instanceof Error ? error.message : String(error)}`); }
@@ -118,13 +112,7 @@ function generateSbom(directory) {
   }
   writeFileSync(join(out, 'npm-sbom.cdx.json'), `${JSON.stringify(npmSbom, null, 2)}\n`);
 
-  let cargoOutput;
-  try {
-    cargoOutput = run('cargo', ['metadata', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--format-version', '1']);
-  } catch (error) {
-    writeFileSync(join(out, 'SBOM-ERROR.txt'), `${error instanceof Error ? error.message : String(error)}\n`);
-    throw error;
-  }
+  const cargoOutput = run('cargo', ['metadata', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--format-version', '1']);
   let cargoMetadata;
   try { cargoMetadata = JSON.parse(cargoOutput); }
   catch (error) { fail(`cargo metadata did not produce JSON: ${error instanceof Error ? error.message : String(error)}`); }

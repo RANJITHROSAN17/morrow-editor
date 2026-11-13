@@ -57,28 +57,6 @@ jobs:
           Copy-Item package-lock.json release/package-lock.json
           Copy-Item src-tauri/Cargo.lock release/Cargo.lock
           node scripts/release.mjs sbom release
-      # Temporary failure visibility for hosted-runner diagnostics; successful releases never
-      # include this report. The error annotation is removed once the runner-specific gate is fixed.
-      - name: Annotate failed SBOM gate
-        if: ${{ failure() && github.event_name == 'workflow_dispatch' }}
-        shell: pwsh
-        run: |
-          if (Test-Path release/SBOM-ERROR.txt) {
-            $message = (Get-Content release/SBOM-ERROR.txt -Raw).Trim() -replace '[\r\n]+', ' '
-            Write-Output "::error title=SBOM command diagnostic::$message"
-          } elseif (Test-Path release/LICENSE-REPORT.json) {
-            $report = Get-Content release/LICENSE-REPORT.json -Raw | ConvertFrom-Json
-            $missingMetadata = ($report.packagesWithoutLicenseMetadata | ForEach-Object { "$($_.ecosystem):$($_.name)@$($_.version)" }) -join ','
-            $missingNotices = ($report.licenseIdsMissingFromThirdPartyNotices) -join ','
-            Write-Output "::error title=SBOM license diagnostic::npm=$($report.npmPackages) cargo=$($report.cargoPackages) missingMetadata=$missingMetadata missingNotices=$missingNotices"
-          }
-      - name: Upload failed license diagnostic
-        if: ${{ failure() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-license-diagnostic
-          path: release
-          if-no-files-found: ignore
       - name: Verify source version for a tagged build
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         shell: pwsh
