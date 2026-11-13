@@ -19,6 +19,29 @@ export const MAX_INDEX_FILES = 2_000;
 export const MAX_INDEX_FILE_BYTES = 512 * 1024;
 export const INDEXABLE_EXTENSIONS = /\.(?:md|markdown|mdown|mkd|mdx|txt|text|kanban)$/iu;
 
+/** Normalize separators and trailing slashes for a boundary-safe containment check. */
+function normalizeRootPath(path: string): string {
+  const value = path.replace(/[\\/]+/gu, '/').replace(/\/+$/u, '').toLowerCase();
+  return value || '/';
+}
+
+/** True when `filePath` is inside `rootPath`, not merely in a sibling with the same prefix. */
+export function isPathInsideRoot(filePath: string, rootPath: string): boolean {
+  if (!filePath || !rootPath) return false;
+  const file = filePath.replace(/[\\/]+/gu, '/').toLowerCase();
+  const root = normalizeRootPath(rootPath);
+  return root === '/' ? file.startsWith('/') : file.startsWith(`${root}/`);
+}
+
+/**
+ * Pure invalidation decision for a successful tab save. A download or an unsaved buffer has no
+ * native path, and a save outside every open folder cannot change the folder index.
+ */
+export function shouldInvalidateIndexOnSave(savedPath: string | null | undefined, rootPaths: readonly string[]): boolean {
+  if (!savedPath) return false;
+  return rootPaths.some((root) => typeof root === 'string' && root.trim() !== '' && isPathInsideRoot(savedPath, root));
+}
+
 export interface NoteRecord {
   /** File name, e.g. `roadmap.md`. */
   name: string;

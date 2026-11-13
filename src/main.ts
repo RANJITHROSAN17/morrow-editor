@@ -39,6 +39,8 @@ const el = <T extends keyof HTMLElementTagNameMap>(tag: T, className = ''): HTML
   const element = document.createElement(tag); if (className) element.className = className; return element;
 };
 const uuid = () => crypto.randomUUID();
+/** Coalesce rapid saves before rebuilding the folder index off the keystroke path. */
+const NOTE_INDEX_REFRESH_DELAY_MS = 300;
 
 interface Doc {
   id: string;
@@ -101,6 +103,8 @@ class MorrowApp {
   private indexToken = 0;
   private indexStale = true;
   private indexBusy = false;
+  private indexRefreshTimer = 0;
+  private indexController: AbortController | null = null;
   private goalTracker = new DailyGoalTracker(null);
   private statsTimer = 0;
   private stats: TextStats = countTextStats('');
@@ -133,7 +137,7 @@ class MorrowApp {
       switchDocument: (id) => this.switchDoc(id),
       openFolderNote: (rootName, relative, template) => this.openFolderNote(rootName, relative, template),
       appendToFolderNote: (rootName, relative, text) => this.appendToFolderNote(rootName, relative, text),
-      indexableFiles: () => this.workbench.indexableFiles(),
+      indexableFiles: (signal) => this.workbench.indexableFiles(signal),
       onIndexChanged: () => this.invalidateNoteIndex(),
     });
   }
@@ -583,6 +587,7 @@ class MorrowApp {
       doc.savedDoc = textAtSave; doc.savedEncoding = encodingAtSave; doc.savedLineEnding = endingAtSave; doc.mixedLineEndings = false;
       this.renderAll(); if (doc.id === this.activeId) void this.applyLanguage();
       this.scheduleRecovery();
+      if (await this.workbench.savedFileIsInOpenFolder(doc.ref)) this.invalidateNoteIndex();
       this.toast(target.ref.kind === 'download' ? 'A copy was downloaded. Browser preview cannot overwrite the original file.' : `Saved ${doc.name}.`);
       return true;
     } catch (error) { this.toast(`Could not save ${doc.name}: ${this.errorText(error)}`); return false; }
@@ -855,7 +860,7 @@ class MorrowApp {
     if (!this.noteIndex.size) return this.workbench.workspaceNames().length
       ? 'No folder notes indexed yet. Choose “Index this folder’s notes” to enable backlinks and the tag cloud.'
       : 'Open a folder first. The index reads only folders you chose, stays on this machine and can be cleared.';
-    if (this.indexStale) return `${this.noteIndex.size.toLocaleString()} notes indexed · out of date — reopen this panel to refresh.`;
+    if (this.indexStale) return `${this.noteIndex.size.toLocaleString()} notes indexed · out of date — refresh pending.`;
     return `${this.noteIndex.size.toLocaleString()} notes indexed locally. Nothing is uploaded.`;
   }
 
@@ -945,33 +950,62 @@ class MorrowApp {
     void name;
   }
 
-  /** Forget the index so the next panel open rebuilds it from disk. */
+  /** Mark the index stale; a refresh is scheduled only while the Notes panel is open. */
   private invalidateNoteIndex(): void {
     this.indexToken++;
     this.indexStale = true;
+    this.indexController?.abort();
+    this.indexController = null;
     this.renderNotesPanel();
+    this.scheduleNoteIndexRefresh();
+  }
+
+  private scheduleNoteIndexRefresh(): void {
+    window.clearTimeout(this.indexRefreshTimer);
+    this.indexRefreshTimer = 0;
+    if (!this.notesOpen) return;
+    this.indexRefreshTimer = window.setTimeout(() => {
+      this.indexRefreshTimer = 0;
+      void this.buildNoteIndex();
+    }, NOTE_INDEX_REFRESH_DELAY_MS);
+  }
+
+  private cancelNoteIndexRefresh(): void {
+    window.clearTimeout(this.indexRefreshTimer);
+    this.indexRefreshTimer = 0;
+    this.indexController?.abort();
+    this.indexController = null;
   }
 
   private async buildNoteIndex(force = false): Promise<void> {
-    if (this.indexBusy) return;
+    if (!this.notesOpen || this.indexBusy) return;
     if (!force && this.noteIndex.size && !this.indexStale) return;
     this.indexBusy = true;
-    this.renderTags();
+    const controller = new AbortController();
+    this.indexController = controller;
     const token = ++this.indexToken;
+    let failure: string | null = null;
+    this.renderTags();
     try {
-      const files = await this.workbench.indexableFiles();
-      if (token !== this.indexToken) return;
+      const files = await this.workbench.indexableFiles(controller.signal);
+      if (controller.signal.aborted || token !== this.indexToken || !this.notesOpen) return;
       const next = new NoteIndex();
       for (const file of files) next.set({ name: file.name, relative: file.relative, rootName: file.rootName }, file.text);
       this.noteIndex = next;
       this.indexStale = false;
-      $('#index-status').textContent = this.indexStatusText();
     } catch (error) {
-      $('#index-status').textContent = `Could not index folder notes: ${this.errorText(error)}`;
+      if (controller.signal.aborted || token !== this.indexToken || !this.notesOpen) return;
+      failure = `Could not index folder notes: ${this.errorText(error)}`;
     } finally {
+      if (this.indexController === controller) this.indexController = null;
       this.indexBusy = false;
-      this.renderTags();
-      this.renderLinks();
+      if (this.notesOpen) {
+        this.renderTags();
+        this.renderLinks();
+        $('#index-status').textContent = failure ?? this.indexStatusText();
+        // A save or panel action invalidated this scan while it was running; coalesce into one more pass.
+        if (token !== this.indexToken) this.scheduleNoteIndexRefresh();
+      }
     }
   }
 
@@ -1305,6 +1339,7 @@ class MorrowApp {
 
   private toggleNotesPanel(): void {
     this.notesOpen = !this.notesOpen;
+    if (!this.notesOpen) this.cancelNoteIndexRefresh();
     this.renderNotesPanel();
     this.view?.requestMeasure();
     if (this.notesOpen) void this.buildNoteIndex();
