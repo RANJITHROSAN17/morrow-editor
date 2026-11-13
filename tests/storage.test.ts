@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaults, isValidSession, loadSettings, saveSettings, SETTINGS_KEY } from '../src/storage';
+import { DEFAULT_DAILY_TEMPLATE } from '../src/daily';
 
 function memoryStorage(initial: Record<string, string> = {}): Storage {
   const values = new Map(Object.entries(initial));
@@ -15,6 +16,40 @@ function memoryStorage(initial: Record<string, string> = {}): Storage {
 
 beforeEach(() => { vi.stubGlobal('localStorage', memoryStorage()); });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+describe('writing-surface settings', () => {
+  it('defaults to a quiet page: no minimap, no smart punctuation, no goal, Daily folder', () => {
+    expect(defaults.minimap).toBe(false);
+    expect(defaults.smart).toBe(false);
+    expect(defaults.spellcheck).toBe(false);
+    expect(defaults.maxLineLength).toBe(0);
+    expect(defaults.fontFamily).toBe('editor');
+    expect(defaults.focus).toMatchObject({ focus: false, typewriter: false, zen: false });
+    expect(defaults.daily).toMatchObject({ format: 'yyyy-mm-dd', folder: 'Daily' });
+    expect(defaults.goal.target).toBe(0);
+  });
+
+  it('clamps a hand-edited ruler and rejects unknown typefaces', () => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ maxLineLength: 9000, fontFamily: 'comic' }));
+    const { settings } = loadSettings();
+    expect(settings.maxLineLength).toBe(200);
+    expect(settings.fontFamily).toBe('editor');
+  });
+
+  it('keeps only relative daily-note folders so a note cannot be written outside the workspace', () => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ daily: { folder: '../../etc' } }));
+    expect(loadSettings().settings.daily.folder).toBe('Daily');
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ daily: { folder: 'Journal/2026' } }));
+    expect(loadSettings().settings.daily.folder).toBe('Journal/2026');
+  });
+
+  it('falls back to the default template when a stored one is unusably long', () => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ daily: { template: 'x'.repeat(60_000) } }));
+    const { settings } = loadSettings();
+    expect(settings.daily.template.length).toBeLessThan(60_000);
+    expect(settings.daily.template).toBe(DEFAULT_DAILY_TEMPLATE);
+  });
+});
 
 describe('settings persistence and session-only AI consent', () => {
   it('uses recovery on and AI off on a new installation', () => {

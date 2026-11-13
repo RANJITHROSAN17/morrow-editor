@@ -49,6 +49,7 @@ if (!Array.isArray(doc.items)) {
 }
 
 const seen = new Set();
+const themes = new Map();
 let readyCount = 0;
 let easyReady = 0;
 
@@ -84,9 +85,21 @@ for (const [i, item] of doc.items.entries()) {
     fail(`${at}: status 'shipped' needs a 'release' (the tag it shipped in)`);
   }
 
+  // One-at-a-time work is the whole point of the queue: every candidate needs a `theme`, so the
+  // bot can hold back siblings of the theme already being worked on. Without it the queue
+  // degenerates back into five unrelated issues and a newcomer picks the wrong one.
+  if (item.theme && typeof item.theme !== "string") {
+    fail(`${at}: 'theme' must be a string`);
+  }
+  if (item.release && typeof item.release === "string" && !/^v?\d+\.\d+\.\d+$/u.test(item.release)) {
+    fail(`${at}: release '${item.release}' is not a version tag like v0.5.0; the close comment would mislead`);
+  }
+
   if (item.status === "ready" || item.status === "filed") {
     readyCount += 1;
     if (item.difficulty === "easy") easyReady += 1;
+    if (!item.theme) fail(`${at}: filing candidate must name a 'theme' so the bot can serialise work`);
+    else themes.set(item.theme, (themes.get(item.theme) ?? 0) + 1);
 
     if (typeof item.body !== "string") {
       fail(`${at}: filing candidate has no body`);
@@ -104,14 +117,22 @@ for (const [i, item] of doc.items.entries()) {
   }
 }
 
-// The cap is the anti-pattern guard: a tracker full of bot issues with no human replies reads
-// as an abandoned project and repels exactly the people we want.
+// Two caps, both anti-pattern guards. `open_easy_cap` protects a newcomer from picking a task
+// nobody has time to review; `open_curated_cap` protects the reviewer from a tracker full of
+// bot issues with no human replies, which reads as an abandoned project.
 const cap = doc.meta?.open_easy_cap ?? 3;
+const curatedCap = doc.meta?.open_curated_cap ?? cap + 1;
 if (easyReady > cap) {
   fail(`too many 'easy' items in status ready/filed: ${easyReady} > cap ${cap}. Move the rest to backlog.`);
 }
-if (readyCount > cap + 1) {
-  fail(`too many filing candidates: ${readyCount}. Keep the open queue small enough to answer.`);
+if (readyCount > curatedCap) {
+  fail(`too many filing candidates: ${readyCount} > cap ${curatedCap}. Keep the open queue small enough to answer.`);
+}
+
+// The bot files at most one candidate per theme per run, so a theme with more than one ready
+// entry is a manifest bug: the second one would stall indefinitely with no visible reason.
+for (const [theme, count] of themes) {
+  if (count > 1) fail(`theme '${theme}' has ${count} filing candidates; the queue works one at a time per theme`);
 }
 
 for (const w of warnings) console.warn(`validate-roadmap: warn: ${w}`);
@@ -123,5 +144,6 @@ if (errors.length) {
 }
 
 console.log(
-  `validate-roadmap: ${PATH} OK (${doc.items.length} item(s), ${readyCount} filing candidate(s), cap ${cap})`,
+  `validate-roadmap: ${PATH} OK (${doc.items.length} item(s), ${readyCount} filing candidate(s) `
+  + `across ${themes.size} theme(s), caps ${cap}/${curatedCap})`,
 );

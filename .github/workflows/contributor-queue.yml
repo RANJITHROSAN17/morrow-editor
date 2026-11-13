@@ -7,6 +7,9 @@ name: Contributor queue
 #   3. IMMEDIATE REPLENISHMENT — runs on `issues: [closed]`, `push` to `.github/roadmap.json`,
 #      weekly schedule, and `workflow_dispatch`.
 #   4. RELEASE-VERIFIED CLOSURE — closes only bot-created issues marked `shipped` with a non-empty `release`.
+#   5. ONE THING AT A TIME — a candidate is filed only when no open curated issue shares its
+#      `theme`, and at most one candidate per theme is filed per run. Themes are serial workstreams:
+#      two open issues in the same area split the reviewer's attention and the contributor's.
 
 on:
   push:
@@ -167,7 +170,7 @@ jobs:
             exit 0
           fi
 
-          jq -c --slurpfile seen /tmp/all.json \
+          jq -c --slurpfile seen /tmp/all.json --slurpfile open /tmp/open.json \
             --argjson easy "$EASY" --argjson easyCap "$EASY_CAP" --argjson cur "$CURATED" --argjson totCap "$TOTAL_CAP" '
             def complete:
               ((.body // "") | (contains("## Context") and contains("## Acceptance criteria") and contains("## How to verify") and contains("## Time estimate")))
@@ -176,20 +179,26 @@ jobs:
             def unseen:
               (.id | "<!-- roadmap:" + . + " -->") as $m
               | ([$seen[0][] | select((.body // "") | contains($m))] | length) == 0;
+            # A theme is still being worked on while any curated issue carrying its marker is open.
+            def theme_busy($theme):
+              ([$open[0][] | select((.body // "") | contains("<!-- theme:" + $theme + " -->"))] | length) > 0;
 
             (
               [ .items[] | select(.status == "ready") | select(complete) | select(unseen) ] +
               [ .items[] | select(.status == "backlog") | select(complete) | select(unseen) ]
             ) as $candidates
             | reduce $candidates[] as $item (
-                { picked: [], e: $easy, c: $cur };
+                { picked: [], e: $easy, c: $cur, used: [] };
                 if .c >= $totCap then .
                 elif ($item.difficulty == "easy" and .e >= $easyCap) then .
+                elif (($item.theme // "") != "" and theme_busy($item.theme)) then .
+                elif (.used | index($item.theme)) != null then .
                 else
                   {
                     picked: (.picked + [$item]),
                     e: (if $item.difficulty == "easy" then .e + 1 else .e end),
-                    c: (.c + 1)
+                    c: (.c + 1),
+                    used: (.used + [$item.theme])
                   }
                 end
               )
@@ -230,6 +239,10 @@ jobs:
                 "$ITEM_TIME" "$OWNER" "$SLA"
               printf 'Not sure where to start? Comment and ask; that is a valid first contribution. Open a PR with `Closes #<issue-number>` when ready.\n\n'
               printf '<!-- roadmap:%s -->\n' "$ITEM_ID"
+              ITEM_THEME="$(jq -r '.theme // ""' <<< "$ITEM")"
+              if [ -n "$ITEM_THEME" ]; then
+                printf '<!-- theme:%s -->\n' "$ITEM_THEME"
+              fi
             } > /tmp/final-body.md
 
             IFS=',' read -r -a LABELS <<< "$ITEM_LABELS"
@@ -242,7 +255,7 @@ jobs:
             done
 
             URL="$(gh issue create --title "$ITEM_TITLE" --body-file /tmp/final-body.md "${ARGS[@]}")"
-            echo "- filed \`${ITEM_ID}\`: ${URL}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- filed \`${ITEM_ID}\` (theme: ${ITEM_THEME:-none}): ${URL}" >> "$GITHUB_STEP_SUMMARY"
           done
 
       - name: Report a skipped or dry-run decision

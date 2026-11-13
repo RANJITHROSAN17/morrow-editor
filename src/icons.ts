@@ -26,6 +26,17 @@ const paths: Record<string, string> = {
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
   external: '<path d="M13 5h6v6M19 5l-9 9M18 13v5H6V6h5"/>',
   document: '<path d="M6 3.5h8l4 4v13H6zM14 3.5v4h4M9 12h6M9 15h6"/>',
+  outline: '<path d="M4 6h6M4 12h9M4 18h12M16 5h4M19 5v9"/>',
+  notes: '<path d="M5 4.5h9l5 5V20H5z"/><path d="M14 4.5v5h5M8 13h7M8 16h5"/>',
+  focus: '<circle cx="12" cy="12" r="3.2"/><path d="M4 8V5a1 1 0 0 1 1-1h3M20 8V5a1 1 0 0 0-1-1h-3M4 16v3a1 1 0 0 0 1 1h3M20 16v3a1 1 0 0 1-1 1h-3"/>',
+  capture: '<path d="M12 4v10M8 10l4 4 4-4M5 18h14"/>',
+  calendar: '<rect x="4" y="5.5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3.5v4M16 3.5v4"/>',
+  link: '<path d="M10.5 13.5 13.5 10.5M9 7.5 11 5.5a3.5 3.5 0 0 1 5 5l-2 2M15 16.5l-2 2a3.5 3.5 0 0 1-5-5l2-2"/>',
+  tag: '<path d="M11 3.5H19a1.5 1.5 0 0 1 1.5 1.5v8L12 21.5 3.5 13z"/><circle cx="16.5" cy="7.5" r="1.2"/>',
+  typewriter: '<path d="M4 7h16M4 12h11M4 17h7"/>',
+  goal: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/>',
+  ruler: '<path d="M4 15 15 4l5 5L9 20H4z"/><path d="M7 12l2 2M10 9l2 2M13 6l2 2"/>',
+  spellcheck: '<path d="m4 17 5-11 5 11M6 13h6M16 15l1.6 1.6L21 13"/>',
   sliders: '<path d="M4 7h10M18 7h2M4 17h2m4 0h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
 };
 export function icon(name: string, size = 16): string {

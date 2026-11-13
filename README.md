@@ -45,7 +45,10 @@ For your first desktop session, open a disposable text file, edit, save and reop
 - **Folders and navigation:** add multiple folders to a workspace, create files and folders, search saved files across roots, and use quick open to navigate.
 - **Review before applying:** compare a pasted replacement with a selected range, explicitly accept it, and undo it. Applying a change does not automatically save the file.
 - **AI on your terms:** optional inline suggestions, **reviewable AI actions on a selection** (improve, fix, shorten, expand, summarize, bullets, explain), a browser-first Arena workflow, and a separate optional Arena API panel. Replace actions always show a diff before anything changes. See [AI and privacy](#ai-and-privacy) before sharing text.
+- **A writing surface for notes:** live words/characters/reading time, an optional daily word goal, a click-to-jump minimap, and focus / typewriter / zen modes. Markdown shortcuts for bold, italic, links, lists, quotes, code blocks and headings, plus line operations and optional smart typography.
+- **A notes layer over your own files:** an outline of the current note, tags from `#tag` and front matter, `[[wiki links]]` with backlinks and orphans, quick capture, daily notes and templates. The index is built locally on demand, reads only folders you opened, and can be cleared.
 - **Recovery and file awareness:** optional session recovery and checks for external file changes. Recovery is unencrypted and is **not a backup**.
+- **One picture of the product:** [Morrow at a glance](docs/MORROW-AT-A-GLANCE.md).
 
 Morrow is not yet a full IDE: it does not provide a debugger, integrated terminal, extension marketplace, or language-server features. See the [full guide](docs/USER-GUIDE.md) for file formats, limits, shortcuts, and safety details.
 
@@ -119,6 +122,11 @@ Morrow does **not** embed the Arena website, transfer cookies or login sessions,
 | Go to line / command palette | `Ctrl+G` / `Ctrl+Shift+P` |
 | Settings | `Ctrl+,` |
 | Request / accept / dismiss an AI suggestion | `Ctrl+Shift+Space` / `Tab` / `Esc` |
+| Quick capture / today's note / notes panel | `Ctrl+Alt+N` / `Ctrl+Alt+D` / `Ctrl+Alt+B` |
+| Bold / italic / link | `Ctrl+B` / `Ctrl+I` / `Ctrl+K` (bold applies to a Markdown selection; elsewhere `Ctrl+B` still toggles the sidebar) |
+| Heading 1–6 / quote / bullets | `Ctrl+Shift+1…6` / `Ctrl+Shift+Q` / `Ctrl+Shift+U` |
+| Focus / typewriter / zen | `F8` / `F9` / `F11` |
+| Zoom in / out / reset | `Ctrl++` / `Ctrl+-` / `Ctrl+0` |
 
 ## Development and testing
 

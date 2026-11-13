@@ -1,6 +1,7 @@
 import MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
 import { MAX_MARKDOWN_CHARS, MAX_MARKDOWN_NODES, type MarkdownResult, type PreviewNode, type PreviewTag } from './markdown-preview-contract';
+import { hasExtensions, preprocessMarkdown } from './markdown-extensions';
 
 const TAG_BY_TOKEN: Record<string, PreviewTag> = {
   paragraph_open: 'p', blockquote_open: 'blockquote', bullet_list_open: 'ul', ordered_list_open: 'ol', list_item_open: 'li',
@@ -18,7 +19,11 @@ export function buildMarkdownPreview(source: string): MarkdownResult {
     // TypeScript Options declaration, so pass it through a structural variable.
     const options = { html: false, linkify: false, typographer: false, maxNesting: 20 };
     const parser = new MarkdownIt(options);
-    const tokens = parser.parse(source, {});
+    // Wiki links, tags, task boxes, callouts and math are rewritten into ordinary Markdown
+    // first, so the parser still emits only the small, closed node set below.
+    const prepared = hasExtensions(source) ? preprocessMarkdown(source) : source;
+    if (prepared.length > MAX_MARKDOWN_CHARS * 2) return { ok: false, error: `Preview is limited to ${MAX_MARKDOWN_CHARS.toLocaleString()} characters. Your file is unchanged.` };
+    const tokens = parser.parse(prepared, {});
     const root: PreviewNode[] = [];
     const stack: PreviewNode[][] = [root];
     let count = 0;
