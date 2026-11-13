@@ -3,8 +3,12 @@ import { desktop, fileName } from './platform';
 import { MAX_REVIEW_CHARS, makeReviewTarget, normalizeReplacement, reviewDiff, summarizeReviewDiff, type ReviewTarget } from './change-review';
 import { ARENA_API_ENDPOINT, ARENA_KEYS_URL, ARENA_PRIVACY_URL, ARENA_WEBSITE, MAX_ARENA_CONTEXT, buildArenaRequest, buildBrowserPrompt, requestArenaBatch, type ArenaMode, type ArenaRequest } from './arena';
 import { findPotentialSecrets } from './sensitive-text';
-import { MAX_WORKSPACE_ROOTS, createWorkspaceEntry, listWorkspaceDirectory, pickWorkspace, rankWorkspaceFiles, searchWorkspace, walkWorkspace, type DirectoryListing, type NewWorkspaceEntryKind, type SearchResult, type WalkProgress, type WorkspaceDirectory, type WorkspaceFile } from './workspace';
+import { sha256, encodeFile, decodeFile } from './encoding';
+import { ExternalChangeError, writeTo } from './platform';
+import { MAX_SEARCH_FILE_BYTES, MAX_WORKSPACE_ROOTS, createWorkspaceEntry, listWorkspaceDirectory, readWorkspaceFile, pickWorkspace, rankWorkspaceFiles, searchWorkspace, walkWorkspace, type DirectoryListing, type NewWorkspaceEntryKind, type SearchResult, type WalkProgress, type WorkspaceDirectory, type WorkspaceFile } from './workspace';
 
+const INDEXABLE_EXTENSIONS = /\.(?:md|markdown|mdown|mkd|mdx|txt|text|kanban)$/iu;
+type IterableDirectory = FileSystemDirectoryHandle & { values(): AsyncIterableIterator<FileSystemHandle> };
 const $ = <T extends HTMLElement = HTMLElement>(selector: string): T => {
   const value = document.querySelector<T>(selector);
   if (!value) throw new Error(`Missing element ${selector}`);
@@ -28,6 +32,13 @@ export interface WorkbenchHost {
   goToLine(line: number, column?: number): void;
   openWorkspaceFile(entry: WorkspaceFile, line?: number, column?: number): Promise<void>;
   openRecent(path: string): Promise<void>;
+  /** Open a note that lives at a folder-relative path, creating it from `template` if missing. */
+  openFolderNote(rootName: string | null, relative: string, template: string): Promise<void>;
+  /** Append text to a note at a folder-relative path, creating it when absent. */
+  appendToFolderNote(rootName: string | null, relative: string, text: string): Promise<void>;
+  /** Files available to the note index: every note in every open folder. */
+  indexableFiles(): Promise<{ name: string; relative: string; rootName: string; text: string }[]>;
+  onIndexChanged(): void;
   listOpenDocuments(): OpenDocument[];
   recentPaths(): string[];
   switchDocument(id: string): void;
@@ -721,6 +732,138 @@ export class Workbench {
     if (!this.host.targetIsCurrent(result.target)) { $('#arena-status').textContent = 'The target changed or closed. Capture it again before requesting a new edit.'; return; }
     $<HTMLDialogElement>('#arena-dialog').close();
     this.openReview(result.target, result.text);
+  }
+
+  /* -------------------------------------------------------------------------------------- *
+   * Folder notes: resolve a folder-relative path, read it, write it, and create it on demand.
+   * Everything goes through the existing bounded workspace read/create paths, so the native
+   * side keeps re-validating every component.
+   * -------------------------------------------------------------------------------------- */
+
+  /** Folder names of the open workspace roots, for user-facing messages. */
+  workspaceNames(): string[] {
+    return this.roots.map((root) => root.folder.name);
+  }
+
+  private chooseRoot(rootName: string | null): WorkspaceRootState | null {
+    if (!this.roots.length) return null;
+    if (!rootName) return this.roots[0];
+    return this.roots.find((root) => root.folder.name === rootName) ?? this.roots[0];
+  }
+
+  /** Resolve one child directory of a root by name, creating it when `create` is true. */
+  private async resolveFolder(root: WorkspaceRootState, segments: string[], create: boolean): Promise<WorkspaceDirectory> {
+    let directory = root.folder;
+    for (const segment of segments) {
+      if (!segment) continue;
+      if (directory.kind === 'browser') {
+        const handle = await directory.handle.getDirectoryHandle(segment, { create }) as unknown as IterableDirectory;
+        directory = { kind: 'browser', type: 'directory', name: segment, rootName: root.folder.name, handle, relative: directory.relative ? `${directory.relative}/${segment}` : segment };
+      } else {
+        // Native folders come back from the Rust side; create on demand only for new notes.
+        if (create) directory = await createWorkspaceEntry(root.folder, directory, segment, 'directory') as WorkspaceDirectory;
+        else {
+          const listing = await listWorkspaceDirectory(directory);
+          const found = listing.entries.find((entry) => entry.type === 'directory' && entry.name === segment);
+          if (!found) throw new Error(`The folder “${segment}” does not exist.`);
+          directory = found as WorkspaceDirectory;
+        }
+      }
+    }
+    return directory;
+  }
+
+  private async findFile(root: WorkspaceRootState, relative: string): Promise<WorkspaceFile | null> {
+    const segments = relative.split('/').filter(Boolean);
+    const name = segments.pop();
+    if (!name) return null;
+    const parent = await this.resolveFolder(root, segments, false);
+    const listing = await listWorkspaceDirectory(parent);
+    const found = listing.entries.find((entry) => entry.type === 'file' && entry.name === name);
+    return (found as WorkspaceFile | undefined) ?? null;
+  }
+
+  /**
+   * Read a folder-relative note, creating it (with `template`) when it is absent. Returns the
+   * file that now exists; the caller opens it through the normal tab path.
+   */
+  async ensureFolderNote(rootName: string | null, relative: string, template: string): Promise<{ file: WorkspaceFile; created: boolean; rootName: string }> {
+    if (!this.roots.length) throw new Error('Open a folder first — daily notes and captures live inside one.');
+    const root = this.chooseRoot(rootName);
+    if (!root) throw new Error('Open a folder first.');
+    if (!(await this.sameFolder(root.folder, root.folder))) throw new Error('The open folder changed.');
+    const segments = relative.split('/').filter(Boolean);
+    const name = segments.pop();
+    if (!name) throw new Error('Name the note first.');
+    const existing = await this.findFile(root, relative);
+    if (existing) return { file: existing, created: false, rootName: root.folder.name };
+    const parent = await this.resolveFolder(root, segments, true);
+    const entry = await createWorkspaceEntry(root.folder, parent, name, 'file') as WorkspaceFile;
+    if (template) {
+      // A brand-new file is empty; write the template through the same bounded write path.
+      await this.writeWorkspaceText(entry, template, null);
+    }
+    await this.refreshRoot(root);
+    return { file: entry, created: true, rootName: root.folder.name };
+  }
+
+  private async writeWorkspaceText(entry: WorkspaceFile, text: string, expectedHash: string | null): Promise<void> {
+    const opened = await readWorkspaceFile(entry);
+    const current = await sha256(opened.bytes);
+    if (expectedHash && expectedHash !== current) throw new ExternalChangeError();
+    const bytes = encodeFile(text, 'UTF-8', 'LF');
+    await writeTo(opened.ref, bytes, entry.name, expectedHash ? current : null);
+  }
+
+  /** Append `text` to a folder-relative note, creating it when it does not exist yet. */
+  async appendToNote(rootName: string | null, relative: string, text: string, header = ''): Promise<{ file: WorkspaceFile; created: boolean; rootName: string }> {
+    if (!this.roots.length) throw new Error('Open a folder first.');
+    const root = this.chooseRoot(rootName);
+    if (!root) throw new Error('Open a folder first.');
+    const existing = await this.findFile(root, relative);
+    if (!existing) {
+      const body = header ? `${header}\n${text}` : text;
+      return this.ensureFolderNote(root.folder.name, relative, body.endsWith('\n') ? body : `${body}\n`);
+    }
+    const opened = await readWorkspaceFile(existing);
+    const decoded = decodeFile(opened.bytes);
+    const separator = decoded.text.length && !decoded.text.endsWith('\n') ? '\n' : '';
+    const prefix = decoded.text.length ? `${separator}\n` : '';
+    const next = `${decoded.text}${prefix}${header ? `${header}\n` : ''}${text}${text.endsWith('\n') ? '' : '\n'}`;
+    await this.writeWorkspaceText(existing, next, await sha256(opened.bytes));
+    await this.refreshRoot(root);
+    return { file: existing, created: false, rootName: root.folder.name };
+  }
+
+  /** Every note in every open folder, read through the bounded workspace path. */
+  async indexableFiles(): Promise<{ name: string; relative: string; rootName: string; text: string }[]> {
+    const out: { name: string; relative: string; rootName: string; text: string }[] = [];
+    for (const root of this.roots) {
+      try {
+        await walkWorkspace(root.folder, async (entry) => {
+          if (!INDEXABLE_EXTENSIONS.test(entry.name)) return;
+          if (out.length >= 1_000) return false;
+          try {
+            const opened = await readWorkspaceFile(entry, MAX_SEARCH_FILE_BYTES);
+            out.push({ name: entry.name, relative: entry.relative, rootName: root.folder.name, text: decodeFile(opened.bytes).text });
+          } catch { /* An unreadable note is skipped; the index reports what it could read. */ }
+        });
+      } catch { /* A folder that cannot be walked contributes nothing. */ }
+    }
+    return out;
+  }
+
+  /** Re-list one root's top level so a newly created note appears in the tree immediately. */
+  private async refreshRoot(root: WorkspaceRootState): Promise<void> {
+    if (!this.roots.includes(root)) return;
+    const generation = this.folderGeneration;
+    try {
+      root.listings.clear();
+      root.listings.set('', await listWorkspaceDirectory(root.folder));
+      if (generation !== this.folderGeneration) return;
+      this.renderTree();
+      this.host.onIndexChanged();
+    } catch { /* A refresh failure must not undo a successful write. */ }
   }
 
   private bind(): void {

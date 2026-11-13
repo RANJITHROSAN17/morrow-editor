@@ -1,5 +1,8 @@
 import type { LineEnding, TextEncoding } from './encoding';
 import { DEFAULT_MODEL } from './ai';
+import { sanitizeFocus, type FocusSettings } from './focus-mode';
+import { sanitizeGoal, type WritingGoal } from './word-stats';
+import { DAILY_FORMATS, DEFAULT_DAILY_TEMPLATE, isSafeRelativePath, type DailyFormat } from './daily';
 
 export interface Settings {
   theme: 'dark' | 'light';
@@ -14,8 +17,34 @@ export interface Settings {
   // Recent paths are optional and unencrypted, and are remembered only after opt-in.
   rememberRecent: boolean;
   recentFiles: string[];
+  /** Editor text size is separate from chrome so the UI can stay compact. */
+  fontFamily: 'editor' | 'sans' | 'serif' | 'mono';
+  /** 0 = no limit. Applied while typing, never enforced by blocking input. */
+  maxLineLength: number;
+  /** Optional annotation on the minimap/scrollbar; off by default to keep the surface quiet. */
+  minimap: boolean;
+  /** Native/browser spell-check in the editor. Off by default for code-heavy use. */
+  spellcheck: boolean;
+  /** Curl quotes, `--` and `...` into typographic characters as you type. */
+  smart: boolean;
+  /** Distraction-free writing switches (focus, typewriter, zen). */
+  focus: FocusSettings;
+  /** Daily word goal; resets on a new local day. */
+  goal: WritingGoal;
+  /** Daily note filename pattern and template. */
+  daily: { format: DailyFormat; template: string; folder: string };
+  /** Path of the capture file inside the opened folder; empty means `Inbox.md`. */
+  capturePath: string;
 }
-export const defaults: Settings = { theme: 'dark', wrap: false, recovery: true, fontSize: 14, tabSize: 4, aiEnabled: false, model: DEFAULT_MODEL, sidebar: true, rememberRecent: false, recentFiles: [] };
+
+export const defaults: Settings = {
+  theme: 'dark', wrap: false, recovery: true, fontSize: 14, tabSize: 4, aiEnabled: false,
+  model: DEFAULT_MODEL, sidebar: true, rememberRecent: false, recentFiles: [],
+  fontFamily: 'editor', maxLineLength: 0, minimap: false, spellcheck: false, smart: false,
+  focus: sanitizeFocus(null), goal: { target: 0, date: '' },
+  daily: { format: 'yyyy-mm-dd', template: DEFAULT_DAILY_TEMPLATE, folder: 'Daily' },
+  capturePath: '',
+};
 export const SETTINGS_KEY = 'morrow.settings.v1';
 export interface SavedDocument {
   id: string;
@@ -62,6 +91,22 @@ export function loadSettings(): LoadedSettings {
         recentFiles: saved.rememberRecent === true && Array.isArray(saved.recentFiles)
           ? [...new Set(saved.recentFiles.filter((path): path is string => typeof path === 'string' && path.length > 0 && path.length <= 4096))].slice(0, 20)
           : [],
+        fontFamily: saved.fontFamily === 'sans' || saved.fontFamily === 'serif' || saved.fontFamily === 'mono' ? saved.fontFamily : 'editor',
+        maxLineLength: typeof saved.maxLineLength === 'number' && Number.isFinite(saved.maxLineLength)
+          ? Math.min(200, Math.max(0, Math.trunc(saved.maxLineLength))) : 0,
+        minimap: saved.minimap === true,
+        spellcheck: saved.spellcheck === true,
+        smart: saved.smart === true,
+        focus: sanitizeFocus(saved.focus),
+        // The date is stored as written; the UI decides whether it is still "today".
+        goal: sanitizeGoal(saved.goal, ''),
+        daily: {
+          format: DAILY_FORMATS.some((entry) => entry.id === saved.daily?.format) ? saved.daily!.format : 'yyyy-mm-dd',
+          template: typeof saved.daily?.template === 'string' && saved.daily.template.length <= 50_000 ? saved.daily.template : DEFAULT_DAILY_TEMPLATE,
+          // A stored folder is used to build a path inside the workspace, so it must stay relative.
+          folder: typeof saved.daily?.folder === 'string' && isSafeRelativePath(saved.daily.folder) ? saved.daily.folder : 'Daily',
+        },
+        capturePath: typeof saved.capturePath === 'string' && saved.capturePath.length <= 200 ? saved.capturePath : '',
       },
     };
   } catch {

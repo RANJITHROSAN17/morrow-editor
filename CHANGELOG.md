@@ -2,6 +2,26 @@
 
 ## Unreleased — after 0.4.0
 
+### The writing layer
+
+- Add a **writing surface**: live words, characters, paragraphs, lines and reading time in the status bar; an optional **daily word goal** that counts only positive per-document deltas, resets at local midnight and is stored locally; and a **minimap** that tiles the document exactly, marks the caret, is click-to-jump, and disables itself above 400,000 characters instead of stalling.
+- Add **focus**, **typewriter** and **zen** modes (`F8`, `F9`, `F11`), with a sentence or paragraph scope, plus a status chip that turns them off in one click.
+- Add **Markdown editing commands** — bold, italic, inline code, strikethrough, link, block quote, bullet/numbered/task lists, fenced code block and heading levels (`Ctrl+B`/`Ctrl+I`/`Ctrl+K`, `Ctrl+Shift+1…6`, `Ctrl+Shift+Q`/`U`, `Ctrl+Shift+K`/`D`) — and line operations (duplicate, delete, sort, move up/down, trim, join). `Ctrl+B` still toggles the sidebar everywhere bold cannot apply.
+- Add optional **smart typography** (curly quotes, dashes, ellipsis) that only ever rewrites a single typed character, never a paste or IME composition, and never inside code.
+- Add settings for font family (editor/serif/sans/mono), browser spell-check, a ruler column, minimap, smart typography, focus scope, daily goal and the daily-note folder. Stored daily-note folders are validated as relative paths so a note can never be written outside the workspace.
+
+### The notes layer
+
+- Add a **Notes rail** with three views: an **outline** of the current note, **tags** from `#tag` and front matter (for this note and across the index), and **links** — outbound `[[wiki links]]` with broken/ambiguous states, **backlinks**, and orphan notes.
+- Add an on-demand, **local-only note index** with tag counts, backlink resolution and ambiguity reporting (two notes named `Plan` link to neither, rather than guessing). It reads only folders you opened, can be cleared from the menu, and is never uploaded.
+- Add **quick capture** (`Ctrl+Alt+N`) that appends a timestamped block to `Inbox.md` (or a configured note), optionally as a task list; **daily notes** (`Ctrl+Alt+D`) from an expandable template with `yyyy-mm-dd`, `dd-mm-yyyy`, `yyyy/mm/dd`, `yyyy-mm-dd-dddd` and ISO-week formats; and **new note from template**.
+- Add a **note actions** set: tab outline palette (`Ctrl+Shift+O`), notes panel toggle (`Ctrl+Alt+B`), index build/clear.
+
+### Tests and docs
+
+- 250 unit tests across 25 files, including new suites for word statistics, outlines, notes and front matter, Markdown formatting, focus modes, Markdown extensions, the note index, discovery, the daily goal and the minimap. `npx tsc --noEmit` is clean.
+- Add [Morrow at a glance](docs/MORROW-AT-A-GLANCE.md), a one-image visual explainer of what the app is, a day with it, and an honest list of what is still unproven.
+
 - Add **reviewable AI actions on a selection**: Improve, Fix grammar, Shorten, Expand, Summarize, Bullet points, Explain and Custom. Replace actions open the existing diff review and never edit or save automatically; Explain is read-only. Only the selected text (up to 12,000 characters) and an optional instruction (up to 2,000) are sent to Ollama, after a separate per-session consent. Requests are cancellable, time out after 60 seconds, and are refused if the selection changed. Output is bounded, cleaned, and treated as untrusted text. Unit tests cover limits, delimiter collisions, output cleaning and the transport path; a real model response on Windows remains unverified.
 - Add [competitive audit, user-expectation research and AI upgrade plan](docs/COMPETITIVE-AUDIT-AND-ROADMAP-2026-11.md), covering the most-starred notepad, note-taking and AI-editor repositories, licensing cautions, a table-stakes gap list and a phased roadmap.
 

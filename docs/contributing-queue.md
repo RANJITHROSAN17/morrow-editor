@@ -26,8 +26,12 @@ you edit roadmap.json  →  PR review  →  merge  →  bot files ONE issue  →
    name a file, or if there are more than three `easy` candidates. You cannot merge a
    half-specified task, which is the entire point.
 3. **File.** A weekly workflow (Mondays, and the cap-gated part matters more than the schedule)
-   files the first eligible item with a hidden `<!-- roadmap:ID -->` marker and a footer naming
-   you and your reply SLA.
+   files the first eligible item with a hidden `<!-- roadmap:ID -->` marker, a
+   `<!-- theme:NAME -->` marker and a footer naming you and your reply SLA.
+   **Work is serialised by `theme`:** a candidate is skipped while any open curated issue carries
+   its theme marker, and at most one candidate per theme is filed per run. Every filing candidate
+   must declare a `theme`, and no two ready/filed entries may share one — CI fails otherwise.
+   That is what turns the queue into "one thing at a time" instead of five unrelated asks.
 4. **Answer.** Reply within the SLA stated in `meta.reply_sla_hours`. If you cannot, set
    `"status": "backlog"` and close with a note — a closed, honestly-parked issue is better than an
    open one nobody answers.
@@ -42,7 +46,9 @@ you edit roadmap.json  →  PR review  →  merge  →  bot files ONE issue  →
 |---|---|
 | Never improvises what to file | reads `roadmap.json` only; no model at runtime |
 | Re-running is a no-op | searches for `<!-- roadmap:ID -->` before creating |
-| One issue per run, cap 3 | `meta.open_easy_cap` + the queue count step |
+| One issue per theme at a time | `<!-- theme:NAME -->` marker + the `theme_busy` filter in the select step |
+| Two caps, both enforced | `meta.open_easy_cap` (newcomer-facing) and `meta.open_curated_cap` (reviewer-facing) |
+| Shipped entries must name a real tag | `release` is validated as `vX.Y.Z`, not free text |
 | Refuses incomplete issues | `scripts/validate-roadmap.js` (CI gate) |
 | Cannot touch human work | author check before any comment/close |
 | Least privilege | `contents: read`, `issues: write` only |

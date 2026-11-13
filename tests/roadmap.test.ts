@@ -16,6 +16,7 @@ const MANIFEST = resolve('.github/roadmap.json');
 const complete = (over: Record<string, unknown> = {}) => ({
   id: 'x-1',
   title: 't',
+  theme: 't-1',
   status: 'ready',
   difficulty: 'easy',
   labels: ['good first issue'],
@@ -94,6 +95,59 @@ describe('contributor queue manifest', () => {
       const { code, out } = run(path);
       expect(code).toBe(1);
       expect(out).toMatch(/cap 3/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('refuses a filing candidate with no theme, because the queue serialises work by theme', () => {
+    const { path, cleanup } = fixture({
+      meta: { open_easy_cap: 3 },
+      items: [complete({ theme: undefined })],
+    });
+    try {
+      const { code, out } = run(path);
+      expect(code).toBe(1);
+      expect(out).toMatch(/must name a 'theme'/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('refuses two filing candidates in the same theme, which would stall one indefinitely', () => {
+    const items = [complete({ id: 'a-1' }), complete({ id: 'a-2' })];
+    const { path, cleanup } = fixture({ meta: { open_easy_cap: 3, open_curated_cap: 4 }, items });
+    try {
+      const { code, out } = run(path);
+      expect(code).toBe(1);
+      expect(out).toMatch(/theme 't-1' has 2 filing candidates/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('enforces the curated cap separately from the easy cap', () => {
+    // Three mediums are fine for newcomers to ignore but still flood the tracker if unfiled.
+    const items = ['m-1', 'm-2', 'm-3'].map((id, i) => complete({ id, theme: `t-${i}`, difficulty: 'medium' }));
+    const { path, cleanup } = fixture({ meta: { open_easy_cap: 3, open_curated_cap: 2 }, items });
+    try {
+      const { code, out } = run(path);
+      expect(code).toBe(1);
+      expect(out).toMatch(/too many filing candidates: 3 > cap 2/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('refuses a release that is not a version tag, because the close comment quotes it', () => {
+    const { path, cleanup } = fixture({
+      meta: { open_easy_cap: 3 },
+      items: [complete({ status: 'shipped', release: 'soon' })],
+    });
+    try {
+      const { code, out } = run(path);
+      expect(code).toBe(1);
+      expect(out).toMatch(/not a version tag/);
     } finally {
       cleanup();
     }

@@ -1,14 +1,13 @@
 import './style.css';
 import { EditorState, Text } from '@codemirror/state';
 import { EditorView, type ViewUpdate } from '@codemirror/view';
-import { indentUnit } from '@codemirror/language';
 import { isolateHistory, redo, selectAll, undo } from '@codemirror/commands';
 import { closeSearchPanel, findNext, findPrevious, openSearchPanel, replaceAll, replaceNext, SearchQuery, setSearchQuery } from '@codemirror/search';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { allLanguages, clearGhost, createEditorState, findLanguage, hasGhost, indentCompartment, languageCompartment, languageLabel, showGhost, wrapCompartment } from './editor';
+import { allLanguages, applyEditorExtensions, applyFocus, clearGhost, createEditorState, findLanguage, hasGhost, languageCompartment, languageLabel, showGhost } from './editor';
 import { decodeFile, encodeFile, sha256, type LineEnding, type TextEncoding } from './encoding';
 import { checkNativeFileChange, chooseSaveTarget, desktop, ExternalChangeError, pickFiles, readNative, refPath, writeTo, type FileRef, type OpenedFile, type OpenFailure } from './platform';
 import { complete, listModels, runAction, DEFAULT_MODEL } from './ai';
@@ -20,6 +19,16 @@ import { makeReviewTarget, reviewTargetIsCurrent, type ReviewTarget } from './ch
 import { readWorkspaceFile, type WorkspaceFile } from './workspace';
 import { Workbench } from './workbench';
 import { MarkdownPreview } from './markdown-preview';
+import { applyLineOperation, type LineOperation } from './line-ops';
+import { applySmartTypography, toggleBold, toggleBulletList, toggleHeading, toggleItalic, toggleInlineCode, toggleNumberedList, toggleQuote, toggleStrikethrough, toggleTaskList, wrapCodeBlock, wrapLink, type TextEdit } from './markdown-format';
+import { countTextStats, describeStats, isLargeDocument, type TextStats } from './word-stats';
+import { DailyGoalTracker } from './goal';
+import { extractOutline, headingAt, isMarkdownName, rankHeadings, type Heading } from './outline';
+import { collectTags, extractWikiLinks, resolveWikiTarget } from './notes';
+import { NoteIndex } from './note-index';
+import { buildMinimapBars, minimapAvailable, viewportFraction } from './minimap';
+import { focusClassList, focusLabel, isAnyFocusActive, FOCUS_CLASSES, type FocusSettings } from './focus-mode';
+import { DEFAULT_CAPTURE_SNIPPET, DEFAULT_DAILY_TEMPLATE, expandDailyTemplate, humanDate, isoTime, dailyNotePath, isSafeRelativePath } from './daily';
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string): T => {
   const value = document.querySelector<T>(selector);
@@ -88,6 +97,19 @@ class MorrowApp {
   private findRegex = false;
   private findCase = false;
   private closing = false;
+  private noteIndex = new NoteIndex();
+  private indexToken = 0;
+  private indexStale = true;
+  private indexBusy = false;
+  private goalTracker = new DailyGoalTracker(null);
+  private statsTimer = 0;
+  private stats: TextStats = countTextStats('');
+  private outline: Heading[] = [];
+  private outlineKey = '';
+  private notesOpen = false;
+  private notesTab: 'outline' | 'tags' | 'links' = 'outline';
+  private minimapCanvas: HTMLCanvasElement | null = null;
+  private typewriterRaf = 0;
 
   constructor() {
     const loaded = loadSettings();
@@ -104,11 +126,15 @@ class MorrowApp {
       showAiActions: () => this.showAiActions(),
       lineCount: () => this.view.state.doc.lines,
       goToLine: (line, column) => this.goToLine(line, column),
-      openWorkspaceFile: (entry, line, column) => this.openWorkspaceFile(entry, line, column),
+      openWorkspaceFile: async (entry, line, column) => { await this.openWorkspaceFile(entry, line, column); },
       openRecent: (path) => this.openRecent(path),
       listOpenDocuments: () => this.docs.map((doc) => ({ id: doc.id, name: doc.name, detail: refPath(doc.ref) || doc.displayPath || (doc.sample ? 'Example' : 'Unsaved'), path: refPath(doc.ref) })),
       recentPaths: () => this.settings.rememberRecent ? [...this.settings.recentFiles] : [],
       switchDocument: (id) => this.switchDoc(id),
+      openFolderNote: (rootName, relative, template) => this.openFolderNote(rootName, relative, template),
+      appendToFolderNote: (rootName, relative, text) => this.appendToFolderNote(rootName, relative, text),
+      indexableFiles: () => this.workbench.indexableFiles(),
+      onIndexChanged: () => this.invalidateNoteIndex(),
     });
   }
 
@@ -151,9 +177,11 @@ class MorrowApp {
     }
     this.view = new EditorView({ state: this.active.state, parent: $('#editor') });
     this.renderAll();
+    this.refreshStats();
     await this.applyLanguage();
     // Recovery and editor initialization must finish before actions can mutate tabs.
     this.bindUi();
+    this.bindMinimap();
     $('#startup-status').hidden = true;
     $('#app').removeAttribute('inert');
     $('#app').setAttribute('aria-busy', 'false');
@@ -231,12 +259,15 @@ class MorrowApp {
       this.updateStatus();
       this.updateMarkdownPreview();
       this.scheduleRecovery();
+      this.scheduleStats();
       this.cancelAi();
       this.renderAiStatus();
       if (this.settings.aiEnabled) this.scheduleAi();
       if (this.findOpen) this.updateFindCount();
     } else if (update.selectionSet) {
       this.updateStatus();
+      this.scheduleStats();
+      this.scheduleTypewriterScroll();
       this.scheduleRecovery();
       this.cancelAi();
       this.renderAiStatus();
@@ -458,19 +489,21 @@ class MorrowApp {
     catch (error) { this.reportOpenFailures([{ name: path, message: this.errorText(error) }]); }
   }
 
-  private async openWorkspaceFile(entry: WorkspaceFile, line?: number, column?: number): Promise<void> {
+  private async openWorkspaceFile(entry: WorkspaceFile, line?: number, column?: number): Promise<Doc | null> {
     try {
       const opened = await readWorkspaceFile(entry);
       await this.addOpened(opened);
+      const openedDoc = this.docs.find((doc) => this.sameRefPath(doc, entry)) ?? this.active;
       if (line) {
         const doc = this.active;
         if (this.dirty(doc)) this.toast('Search results refer to the saved file; unsaved changes may shift the line.');
         else if (doc.hash && await sha256(opened.bytes) !== doc.hash) this.toast('The file changed on disk since it was opened; this saved-file result may not match the editor.');
-        if (!this.docs.includes(doc)) return;
+        if (!this.docs.includes(doc)) return openedDoc;
         if (this.activeId !== doc.id) this.switchDoc(doc.id);
         this.goToLine(line, column);
       }
-    } catch (error) { this.reportOpenFailures([{ name: entry.relative, message: this.errorText(error) }]); }
+      return openedDoc;
+    } catch (error) { this.reportOpenFailures([{ name: entry.relative, message: this.errorText(error) }]); return null; }
   }
 
   private goToLine(line: number, column = 1): void {
@@ -676,6 +709,624 @@ class MorrowApp {
     }
   }
 
+
+  /* -------------------------------------------------------------------------------------- *
+   * Writing surface: word statistics, goals, outline, focus modes and the minimap.
+   * -------------------------------------------------------------------------------------- */
+
+  /** Debounced statistics so typing stays responsive on a long note. */
+  private scheduleStats(): void {
+    window.clearTimeout(this.statsTimer);
+    // Counting is O(n); on a huge buffer a longer debounce keeps typing smooth while the numbers
+    // still catch up within a couple of seconds.
+    const slow = (this.view?.state.doc.length ?? 0) > 400_000;
+    this.statsTimer = window.setTimeout(() => this.refreshStats(), slow ? 1_400 : 220);
+  }
+
+  private refreshStats(): void {
+    if (!this.view || !this.activeId) return;
+    const doc = this.active;
+    const text = doc.state.doc.toString();
+    this.stats = countTextStats(text);
+    $('#word-count').textContent = `${this.stats.words.toLocaleString()} ${this.stats.words === 1 ? 'word' : 'words'}`;
+    const read = this.stats.readingMinutes ? ` · ${this.stats.readingMinutes} min read` : '';
+    $('#read-stats').textContent = isLargeDocument(text.length)
+      ? `${this.stats.characters.toLocaleString()} characters`
+      : `${this.stats.characters.toLocaleString()} characters${read}`;
+    $('#word-count').title = describeStats(this.stats);
+    $('#read-stats').title = `${this.stats.paragraphs.toLocaleString()} paragraph(s) · ${this.stats.lines.toLocaleString()} line(s)`;
+    this.goalTracker.record(doc.id, this.stats.words);
+    this.renderGoal();
+    this.refreshOutline(text);
+    this.renderNotesPanel();
+    this.drawMinimap();
+  }
+
+  private renderGoal(): void {
+    const chip = $('#goal-chip');
+    const status = this.goalTracker.status();
+    if (!status.target) { chip.hidden = true; return; }
+    chip.hidden = false;
+    chip.classList.toggle('met', status.met);
+    $('#goal-text').textContent = status.met
+      ? `${status.words.toLocaleString()}/${status.target.toLocaleString()} · goal met`
+      : `${status.words.toLocaleString()}/${status.target.toLocaleString()} words today`;
+    chip.title = status.met
+      ? `Daily goal met — ${status.words.toLocaleString()} words written today.`
+      : `${status.remaining.toLocaleString()} words to today's goal of ${status.target.toLocaleString()}.`;
+    const value = $('#setting-goal-value');
+    if (value) value.textContent = status.met ? `Met (${status.words.toLocaleString()})` : `${status.words.toLocaleString()} of ${status.target.toLocaleString()}`;
+    this.persistGoal();
+  }
+
+  private persistGoal(): void {
+    try { localStorage.setItem('morrow.goal.v1', JSON.stringify(this.goalTracker.toJSON())); }
+    catch { /* A goal is optional; losing it must never block editing. */ }
+  }
+
+  private setGoal(target: number): void {
+    this.goalTracker.setTarget(target);
+    this.goalTracker.record(this.activeId, this.stats.words);
+    this.persistGoal();
+    this.renderGoal();
+    $('#setting-goal-value').textContent = target ? `${this.goalTracker.words.toLocaleString()} of ${target.toLocaleString()}` : 'Off';
+    this.toast(target ? `Daily goal set to ${target.toLocaleString()} words.` : 'Daily goal turned off.');
+  }
+
+  private refreshOutline(text: string): void {
+    const doc = this.active;
+    if (!isMarkdownName(doc.name)) { this.outline = []; this.outlineKey = ''; this.renderOutline(); return; }
+    // Recompute only when the heading-bearing text changed, not on every keystroke.
+    const key = `${doc.id}:${doc.revision}:${text.length}`;
+    if (key === this.outlineKey) return;
+    this.outlineKey = key;
+    this.outline = extractOutline(text, { underline: /\.txt$/iu.test(doc.name) }).headings;
+    this.renderOutline();
+  }
+
+  private renderOutline(): void {
+    const list = $('#outline-list');
+    if (!list) return;
+    list.replaceChildren();
+    $('#outline-empty').hidden = this.outline.length > 0;
+    const doc = this.active;
+    const current = this.view ? headingAt(this.outline, doc.state.doc.lineAt(doc.state.selection.main.head).number - 1) : null;
+    for (const heading of this.outline) {
+      const item = el('li', `level-${heading.level}`);
+      const button = el('button'); button.type = 'button';
+      button.textContent = heading.text || '(untitled heading)';
+      button.title = `Line ${heading.line + 1}`;
+      if (current && current.line === heading.line) button.setAttribute('aria-current', 'true');
+      button.addEventListener('click', () => this.goToLine(heading.line + 1));
+      item.append(button);
+      list.append(item);
+    }
+  }
+
+  private renderNotesPanel(): void {
+    const panel = $('#notes-panel');
+    panel.hidden = !this.notesOpen;
+    $('#notes-chip').setAttribute('aria-pressed', String(this.notesOpen));
+    if (!this.notesOpen) return;
+    for (const tab of ['outline', 'tags', 'links'] as const) {
+      $(`#notes-tab-${tab}`).setAttribute('aria-selected', String(this.notesTab === tab));
+      $(`#notes-view-${tab}`).hidden = this.notesTab !== tab;
+    }
+    // Only the visible tab is rebuilt; the other views refresh when they are selected.
+    if (this.notesTab === 'tags') this.renderTags();
+    if (this.notesTab === 'links') this.renderLinks();
+  }
+
+  private renderTags(): void {
+    const doc = this.active;
+    const tags = collectTags(doc.state.doc.toString());
+    const list = $('#note-tags');
+    list.replaceChildren();
+    if (!tags.length) {
+      const empty = el('li', 'notes-hint'); empty.textContent = 'No tags in this note yet.'; list.append(empty);
+    }
+    for (const tag of tags) {
+      const item = el('li');
+      const button = el('button'); button.type = 'button';
+      button.append(document.createTextNode(`#${tag}`));
+      button.title = `Show notes tagged #${tag}`;
+      button.addEventListener('click', () => void this.showNotesWithTag(tag));
+      item.append(button); list.append(item);
+    }
+    const all = this.noteIndex.tagIndex();
+    const allList = $('#all-tags');
+    allList.replaceChildren();
+    $('#index-status').textContent = this.indexStatusText();
+    $('#all-tags-heading').hidden = all.length === 0;
+    for (const entry of all.slice(0, 40)) {
+      const item = el('li');
+      const button = el('button'); button.type = 'button';
+      button.append(document.createTextNode(`#${entry.tag}`));
+      const count = el('span', 'tag-count'); count.textContent = String(entry.count);
+      button.append(count);
+      button.title = entry.notes.slice(0, 8).map((note) => note.relative).join('\n');
+      button.addEventListener('click', () => void this.showNotesWithTag(entry.tag));
+      item.append(button); allList.append(item);
+    }
+  }
+
+  private indexStatusText(): string {
+    if (this.indexBusy) return 'Indexing folder notes…';
+    if (!this.noteIndex.size) return this.workbench.workspaceNames().length
+      ? 'No folder notes indexed yet. Choose “Index this folder’s notes” to enable backlinks and the tag cloud.'
+      : 'Open a folder first. The index reads only folders you chose, stays on this machine and can be cleared.';
+    if (this.indexStale) return `${this.noteIndex.size.toLocaleString()} notes indexed · out of date — reopen this panel to refresh.`;
+    return `${this.noteIndex.size.toLocaleString()} notes indexed locally. Nothing is uploaded.`;
+  }
+
+  private renderLinks(): void {
+    const doc = this.active;
+    const text = doc.state.doc.toString();
+    const links = extractWikiLinks(text);
+    const outbound = $('#outbound-links'); outbound.replaceChildren();
+    const candidates = this.noteIndex.candidates();
+    if (!links.length) {
+      const empty = el('li', 'notes-hint'); empty.textContent = 'No [[wiki links]] in this note yet.'; outbound.append(empty);
+    }
+    for (const link of links.slice(0, 60)) {
+      const resolved = resolveWikiTarget(link.target, candidates);
+      const item = el('li');
+      const button = el('button'); button.type = 'button';
+      if (resolved.status !== 'linked') button.classList.add(resolved.status === 'ambiguous' ? 'ambiguous' : 'broken');
+      const label = el('span', 'link-target');
+      label.textContent = link.alias || link.target || '(this note)';
+      button.append(label);
+      const line = el('span', 'link-line'); line.textContent = `L${link.line + 1}`;
+      button.append(line);
+      button.title = resolved.status === 'linked' ? `Open ${resolved.match!.relative ?? resolved.match!.name}`
+        : resolved.status === 'ambiguous' ? `${resolved.matches} notes share this name; open one from Quick Open`
+        : 'No note in the index matches this link yet';
+      if (resolved.status === 'linked') button.addEventListener('click', () => void this.openIndexedNote(resolved.match!.name, resolved.match!.relative ?? resolved.match!.name));
+      item.append(button); outbound.append(item);
+    }
+
+    const backlinks = $('#backlink-list'); backlinks.replaceChildren();
+    const target = isMarkdownName(doc.name) ? doc.name : null;
+    const found = target ? this.noteIndex.backlinksTo(target) : { backlinks: [], ambiguous: [] };
+    if (!this.noteIndex.size) {
+      const empty = el('li', 'notes-hint'); empty.textContent = 'Index your folder to see which notes link here.'; backlinks.append(empty);
+    } else if (!found.backlinks.length && !found.ambiguous.length) {
+      const empty = el('li', 'notes-hint'); empty.textContent = 'No indexed note links here yet.'; backlinks.append(empty);
+    }
+    for (const entry of found.backlinks.slice(0, 60)) {
+      const item = el('li');
+      const button = el('button'); button.type = 'button';
+      const label = el('span', 'link-target'); label.textContent = entry.record.relative;
+      button.append(label);
+      const line = el('span', 'link-line'); line.textContent = `L${entry.link.line + 1}`;
+      button.append(line);
+      button.addEventListener('click', () => { void this.openIndexedNote(entry.record.name, entry.record.relative, entry.link.line + 1); });
+      item.append(button); backlinks.append(item);
+    }
+    for (const entry of found.ambiguous.slice(0, 10)) {
+      const item = el('li');
+      const button = el('button', 'ambiguous'); button.type = 'button';
+      const label = el('span', 'link-target'); label.textContent = `${entry.record.relative} (ambiguous link)`;
+      button.append(label);
+      button.title = 'More than one note shares this name, so Morrow does not pick one for you.';
+      item.append(button); backlinks.append(item);
+    }
+
+    const orphans = $('#orphan-list'); orphans.replaceChildren();
+    const orphanHeading = $('#orphan-heading');
+    const orphanNotes = this.noteIndex.size ? this.noteIndex.orphans() : [];
+    orphanHeading.hidden = orphanNotes.length === 0;
+    for (const note of orphanNotes.slice(0, 40)) {
+      const item = el('li');
+      const button = el('button'); button.type = 'button';
+      const label = el('span', 'link-target'); label.textContent = note.relative;
+      button.append(label);
+      button.addEventListener('click', () => { void this.openIndexedNote(note.name, note.relative); });
+      item.append(button); orphans.append(item);
+    }
+  }
+
+  private async showNotesWithTag(tag: string): Promise<void> {
+    if (!this.noteIndex.size) { this.toast('Index a folder first to search notes by tag.'); return; }
+    const notes = this.noteIndex.tagIndex().find((entry) => entry.tag === tag)?.notes ?? [];
+    if (!notes.length) { this.toast(`No indexed note is tagged #${tag}.`); return; }
+    if (notes.length === 1) { await this.openIndexedNote(notes[0].name, notes[0].relative); return; }
+    const list = notes.map((note) => `• ${note.relative}`).join('\n');
+    const choice = await this.confirm(`${notes.length} notes tagged #${tag}`, `${list}\n\nOpen the first one?`, [
+      { id: 'cancel', label: 'Close' }, { id: 'open', label: 'Open first note', style: 'primary' },
+    ], 'TAG SEARCH');
+    if (choice === 'open') await this.openIndexedNote(notes[0].name, notes[0].relative);
+  }
+
+  private async openIndexedNote(name: string, relative: string, line?: number): Promise<void> {
+    const rootName = this.workbench.workspaceNames()[0] ?? null;
+    // `relative` already includes the extension, so it opens as-is.
+    await this.openFolderNote(rootName, relative, '', line);
+    void name;
+  }
+
+  /** Forget the index so the next panel open rebuilds it from disk. */
+  private invalidateNoteIndex(): void {
+    this.indexToken++;
+    this.indexStale = true;
+    this.renderNotesPanel();
+  }
+
+  private async buildNoteIndex(force = false): Promise<void> {
+    if (this.indexBusy) return;
+    if (!force && this.noteIndex.size && !this.indexStale) return;
+    this.indexBusy = true;
+    this.renderTags();
+    const token = ++this.indexToken;
+    try {
+      const files = await this.workbench.indexableFiles();
+      if (token !== this.indexToken) return;
+      const next = new NoteIndex();
+      for (const file of files) next.set({ name: file.name, relative: file.relative, rootName: file.rootName }, file.text);
+      this.noteIndex = next;
+      this.indexStale = false;
+      $('#index-status').textContent = this.indexStatusText();
+    } catch (error) {
+      $('#index-status').textContent = `Could not index folder notes: ${this.errorText(error)}`;
+    } finally {
+      this.indexBusy = false;
+      this.renderTags();
+      this.renderLinks();
+    }
+  }
+
+  /* Focus, typewriter and zen ------------------------------------------------------------- */
+
+  private applyFocusModes(): void {
+    const focus = this.settings.focus;
+    document.documentElement.classList.remove(...FOCUS_CLASSES);
+    for (const name of focusClassList(focus)) document.documentElement.classList.add(name);
+    const chip = $('#focus-chip');
+    chip.hidden = !isAnyFocusActive(focus);
+    $('#focus-text').textContent = focusLabel(focus);
+    $('#setting-focus').setAttribute('aria-checked', String(focus.focus));
+    $('#setting-typewriter').setAttribute('aria-checked', String(focus.typewriter));
+    $('#setting-focus-scope').textContent = `Scope: ${focus.scope}`;
+    if (this.view) applyFocus(this.view, focus);
+    this.scheduleTypewriterScroll();
+  }
+
+  private toggleFocus(part: keyof FocusSettings): void {
+    if (part === 'scope') return;
+    this.settings.focus = { ...this.settings.focus, [part]: !this.settings.focus[part] };
+    this.persistSettings();
+    this.applyFocusModes();
+    this.toast(focusLabel(this.settings.focus));
+  }
+
+  /** Keep the caret near the vertical centre when typewriter mode is on. */
+  private scheduleTypewriterScroll(): void {
+    if (!this.settings.focus.typewriter || !this.view) return;
+    window.cancelAnimationFrame(this.typewriterRaf);
+    this.typewriterRaf = window.requestAnimationFrame(() => {
+      const view = this.view;
+      if (!view) return;
+      const head = view.state.selection.main.head;
+      const height = view.scrollDOM.clientHeight;
+      const block = view.lineBlockAt(head);
+      const target = block.top - height / 2 + block.height / 2;
+      const scroller = view.scrollDOM;
+      const desired = Math.max(0, Math.min(scroller.scrollHeight - height, scroller.scrollTop + target));
+      if (Math.abs(desired - scroller.scrollTop) > 4) scroller.scrollTop = desired;
+    });
+  }
+
+  /* Minimap -------------------------------------------------------------------------------- */
+
+  private drawMinimap(): void {
+    const holder = $('#minimap');
+    const canvas = this.minimapCanvas ?? ($('#minimap-canvas') as HTMLCanvasElement);
+    this.minimapCanvas = canvas;
+    if (!this.view || !this.active) { holder.hidden = true; return; }
+    const text = this.active.state.doc.toString();
+    holder.hidden = !minimapAvailable(text.length, this.settings.minimap);
+    if (holder.hidden) return;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    const ratio = Math.min(2, window.devicePixelRatio || 1);
+    const height = Math.max(200, holder.clientHeight);
+    canvas.width = Math.floor(holder.clientWidth * ratio);
+    canvas.height = Math.floor(height * ratio);
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.clearRect(0, 0, holder.clientWidth, height);
+    const color = getComputedStyle(document.documentElement).getPropertyValue('--dim').trim() || '#888';
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent-strong').trim() || '#aaa';
+    const bars = buildMinimapBars(text, Math.min(240, Math.max(40, Math.floor(height / 3))));
+    const barHeight = Math.max(1, height / Math.max(1, bars.length) - 1);
+    context.fillStyle = color;
+    context.globalAlpha = 0.55;
+    for (const bar of bars) {
+      if (bar.width <= 0) continue;
+      context.fillRect(2, bar.y * height, Math.max(1, (holder.clientWidth - 4) * bar.width), barHeight);
+    }
+    context.globalAlpha = 1;
+    // Viewport marker, so the map answers "where am I" as well as "what is where".
+    const lines = this.active.state.doc.lines;
+    // Measuring the caret keeps this cheap on very large files, where blocks are not laid out.
+    const caret = this.active.state.selection.main.head;
+    const caretLine = this.active.state.doc.lineAt(caret).number;
+    const caretPos = Math.max(1, Math.min(lines, caretLine));
+    const visible = Math.max(1, Math.floor(this.view.scrollDOM.clientHeight / Math.max(14, this.settings.fontSize)));
+    const fraction = viewportFraction(lines, visible);
+    const top = ((caretPos - 1) / lines) * height;
+    context.strokeStyle = accent;
+    context.lineWidth = 1;
+    context.strokeRect(1.5, top + 0.5, holder.clientWidth - 3, Math.max(8, fraction * height));
+  }
+
+  private openGoalDialog(): void {
+    $<HTMLInputElement>('#goal-input').value = String(this.goalTracker.target || 500);
+    $('#goal-status').textContent = this.goalTracker.enabled
+      ? `${this.goalTracker.words.toLocaleString()} words written today. Set 0 to turn the goal off.`
+      : 'No goal set. A common starting point is 500 words a day.';
+    this.showDialog('goal-dialog');
+    $<HTMLInputElement>('#goal-input').focus();
+  }
+
+  private bindMinimap(): void {
+    const holder = $('#minimap');
+    holder.addEventListener('click', (event) => {
+      if (!this.view) return;
+      const rect = holder.getBoundingClientRect();
+      const fraction = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+      const lines = this.view.state.doc.lines;
+      this.goToLine(Math.max(1, Math.round(fraction * lines)));
+    });
+    this.view.scrollDOM.addEventListener('scroll', () => {
+      if (this.settings.minimap) this.drawMinimap();
+    }, { passive: true });
+  }
+
+  /* Markdown editing commands -------------------------------------------------------------- */
+
+  private applyTextEdit(edit: TextEdit | null): void {
+    if (!edit) { this.toast('That command does not apply here.'); return; }
+    this.view.dispatch({
+      changes: { from: edit.from, to: edit.to, insert: edit.insert },
+      selection: { anchor: edit.selection.from, head: edit.selection.to },
+      scrollIntoView: true,
+      userEvent: 'input.format',
+    });
+    this.view.focus();
+  }
+
+  private runFormat(action: string): void {
+    if (!this.view) return;
+    const text = this.view.state.doc.toString();
+    const span = { from: this.view.state.selection.main.from, to: this.view.state.selection.main.to };
+    switch (action) {
+      case 'bold': this.applyTextEdit(toggleBold(text, span)); return;
+      case 'italic': this.applyTextEdit(toggleItalic(text, span)); return;
+      case 'code': this.applyTextEdit(toggleInlineCode(text, span)); return;
+      case 'strike': this.applyTextEdit(toggleStrikethrough(text, span)); return;
+      case 'link': this.applyTextEdit(wrapLink(text, span)); return;
+      case 'quote': this.applyTextEdit(toggleQuote(text, span)); return;
+      case 'bullets': this.applyTextEdit(toggleBulletList(text, span)); return;
+      case 'numbers': this.applyTextEdit(toggleNumberedList(text, span)); return;
+      case 'tasks': this.applyTextEdit(toggleTaskList(text, span)); return;
+      case 'code-block': this.applyTextEdit(wrapCodeBlock(text, span)); return;
+      case 'smart-typography': {
+        const selected = text.slice(span.from, span.to);
+        if (!selected) { this.toast('Select text to convert its quotes and dashes.'); return; }
+        const converted = applySmartTypography(selected);
+        if (converted === selected) { this.toast('Nothing to convert in the selection.'); return; }
+        this.applyTextEdit({ from: span.from, to: span.to, insert: converted, selection: span });
+        return;
+      }
+      case 'heading': this.applyTextEdit(toggleHeading(text, span)); return;
+      default:
+        if (action.startsWith('heading-')) this.applyTextEdit(toggleHeading(text, span, Number(action.slice(-1))));
+        else if (action.startsWith('line-')) this.applyTextEdit(applyLineOperation(text, span, action.slice(5) as LineOperation));
+    }
+  }
+
+  /* Notes: capture, daily notes, templates ------------------------------------------------- */
+
+  private async openFolderNote(rootName: string | null, relative: string, template: string, line?: number): Promise<void> {
+    if (!this.workbench.workspaceNames().length) {
+      this.toast('Open a folder first — folder notes live inside the folder you chose.');
+      return;
+    }
+    try {
+      // The workbench owns file creation so a template is written through one bounded path.
+      const result = await this.workbench.ensureFolderNote(rootName, relative, template);
+      const doc = await this.openWorkspaceFile(result.file);
+      if (!doc) return;
+      if (line) this.goToLine(line);
+      if (!result.created) this.toast(`${relative} is already in your folder — opened it instead of overwriting.`);
+    } catch (error) { this.toast(`Could not open ${relative}: ${this.errorText(error)}`); }
+    finally { this.invalidateNoteIndex(); }
+  }
+
+  private async appendToFolderNote(rootName: string | null, relative: string, text: string, header = ''): Promise<void> {
+    if (!this.workbench.workspaceNames().length) { this.toast('Open a folder first — capture writes into it.'); return; }
+    try {
+      const result = await this.workbench.appendToNote(rootName, relative, text, header);
+      // Re-read through the ordinary open path so an already-open tab is replaced by the
+      // version on disk; a stale tab would otherwise save over the capture.
+      const open = this.docs.find((doc) => this.sameRefPath(doc, result.file));
+      if (open) await this.replaceDocFromDisk(open);
+      else await this.openWorkspaceFile(result.file);
+      this.toast(result.created ? `Captured to a new ${relative}.` : `Captured to ${relative}.`);
+    } catch (error) { this.toast(`Could not capture: ${this.errorText(error)}`); }
+    finally { this.invalidateNoteIndex(); }
+  }
+
+  /** Swap an open tab's text for the file on disk, keeping the tab and its cursor line. */
+  private async replaceDocFromDisk(doc: Doc): Promise<void> {
+    const ref = doc.ref;
+    if (!ref || ref.kind !== 'native') return;
+    const revision = doc.revision;
+    const file = await readNative(ref.path);
+    if (doc.revision !== revision || this.docs.includes(doc) === false) return;
+    const decoded = decodeFile(file.bytes);
+    const line = doc.state.doc.lineAt(Math.min(doc.state.selection.main.head, doc.state.doc.length)).number;
+    doc.state = createEditorState(decoded.text, this.settings, (update) => this.onEditorUpdate(update), doc.state.selection.main.head);
+    doc.savedDoc = doc.state.doc;
+    doc.encoding = doc.savedEncoding = decoded.encoding;
+    doc.lineEnding = doc.savedLineEnding = decoded.lineEnding;
+    doc.mixedLineEndings = decoded.mixedLineEndings;
+    doc.hash = await sha256(file.bytes); doc.revision++;
+    if (doc.id === this.activeId) {
+      this.view.setState(doc.state);
+      this.applyEditorPreferences();
+      this.goToLine(Math.min(line, doc.state.doc.lines));
+    }
+    this.renderAll(); void this.applyLanguage(); this.scheduleRecovery();
+  }
+
+  private sameRefPath(doc: Doc, file: WorkspaceFile): boolean {
+    if (!doc.ref || doc.ref.kind !== file.kind) return false;
+    if (doc.ref.kind === 'native' && file.kind === 'native') return doc.ref.path.toLowerCase() === file.path.toLowerCase();
+    return false;
+  }
+
+  private capturePath(): string {
+    const raw = this.settings.capturePath.trim();
+    if (raw && isSafeRelativePath(raw)) return raw.endsWith('.md') ? raw : `${raw}.md`;
+    return 'Inbox.md';
+  }
+
+  private openCapture(): void {
+    if (!this.workbench.workspaceNames().length) { this.toast('Open a folder first — quick capture writes into it.'); return; }
+    $('#capture-target-name').textContent = this.capturePath();
+    $<HTMLTextAreaElement>('#capture-text').value = '';
+    $<HTMLInputElement>('#capture-task').checked = false;
+    $('#capture-status').textContent = '';
+    this.showDialog('capture-dialog');
+    $<HTMLTextAreaElement>('#capture-text').focus();
+  }
+
+  private async submitCapture(): Promise<void> {
+    const text = $<HTMLTextAreaElement>('#capture-text').value.trim();
+    if (!text) { $('#capture-status').textContent = 'Write something first — an empty capture is not appended.'; return; }
+    if (text.length > 20_000) { $('#capture-status').textContent = 'Captures are limited to 20,000 characters.'; return; }
+    const asTasks = $<HTMLInputElement>('#capture-task').checked;
+    const now = new Date();
+    const body = text.split('\n').map((line) => asTasks && line.trim() && !/^\s*[-*+]\s/u.test(line) ? `- [ ] ${line.trim()}` : line).join('\n');
+    const block = `${DEFAULT_CAPTURE_SNIPPET.replace(/\{\{\s*time\s*\}\}/giu, isoTime(now))}${body}\n`;
+    const button = $<HTMLButtonElement>('#capture-submit');
+    button.disabled = true;
+    $('#capture-status').textContent = 'Appending…';
+    try {
+      await this.appendToFolderNote(null, this.capturePath(), block);
+      $<HTMLDialogElement>('#capture-dialog').close();
+    } catch (error) { $('#capture-status').textContent = this.errorText(error); }
+    finally { button.disabled = false; }
+  }
+
+  private openDailyNote(): void {
+    if (!this.workbench.workspaceNames().length) { this.toast('Open a folder first — today’s note is written into it.'); return; }
+    const now = new Date();
+    const relative = `${dailyNotePath(this.settings.daily.format, now, this.settings.daily.folder)}.md`;
+    const title = humanDate(now);
+    const template = this.settings.daily.template || DEFAULT_DAILY_TEMPLATE;
+    void this.openFolderNote(null, relative, expandDailyTemplate(template, now, title));
+  }
+
+  private openTemplateDialog(kind: 'daily' | 'template'): void {
+    if (!this.workbench.workspaceNames().length) { this.toast('Open a folder first — new notes are written into it.'); return; }
+    const now = new Date();
+    $('#note-dialog-eyebrow').textContent = kind === 'daily' ? "TODAY'S NOTE" : 'NEW NOTE FROM TEMPLATE';
+    $('#note-dialog-title').textContent = kind === 'daily' ? "Today's note" : 'Create a note';
+    $('#note-dialog-intro').textContent = kind === 'daily'
+      ? 'Creates today’s dated note in your folder using the template below. An existing note with that name is opened, never overwritten.'
+      : 'Creates a note from the template below inside your chosen folder. An existing file is opened, never overwritten.';
+    $<HTMLInputElement>('#note-name').value = kind === 'daily' ? dailyNotePath(this.settings.daily.format, now, '') : '';
+    $<HTMLInputElement>('#note-folder').value = this.settings.daily.folder;
+    $<HTMLTextAreaElement>('#note-template').value = this.settings.daily.template;
+    $('#note-create').textContent = 'Create and open';
+    $('#note-dialog-status').textContent = '';
+    this.showDialog('note-dialog');
+    $<HTMLInputElement>(kind === 'daily' ? '#note-template' : '#note-name').focus();
+  }
+
+  private async submitNoteDialog(): Promise<void> {
+    const name = $<HTMLInputElement>('#note-name').value.trim();
+    const folder = $<HTMLInputElement>('#note-folder').value.trim();
+    const template = $<HTMLInputElement>('#note-use-template').checked ? $<HTMLTextAreaElement>('#note-template').value : '';
+    if (!name) { $('#note-dialog-status').textContent = 'Give the note a name.'; return; }
+    if (/[\\/]/u.test(name) || /[<>:"|?*\u0000-\u001f]/u.test(name)) { $('#note-dialog-status').textContent = 'Use one file name without slashes or special characters.'; return; }
+    if (folder && !isSafeRelativePath(folder)) { $('#note-dialog-status').textContent = 'The folder path is not valid.'; return; }
+    const relative = `${folder ? `${folder.replace(/^[\\/]+|[\\/]+$/gu, '')}/` : ''}${name.endsWith('.md') ? name : `${name}.md`}`;
+    const now = new Date();
+    const body = template ? expandDailyTemplate(template, now, name.replace(/\.md$/iu, '')) : '';
+    $<HTMLButtonElement>('#note-create').disabled = true;
+    $('#note-dialog-status').textContent = 'Creating…';
+    try {
+      await this.openFolderNote(null, relative, body);
+      this.settings.daily.template = $<HTMLTextAreaElement>('#note-template').value.slice(0, 50_000);
+      this.settings.daily.folder = folder;
+      this.persistSettings();
+      $<HTMLDialogElement>('#note-dialog').close();
+    } catch (error) { $('#note-dialog-status').textContent = this.errorText(error); }
+    finally { $<HTMLButtonElement>('#note-create').disabled = false; }
+  }
+
+  private showTabOutline(): void {
+    const text = this.active.state.doc.toString();
+    const headings = extractOutline(text, { underline: /\.txt$/iu.test(this.active.name) }).headings;
+    const input = $<HTMLInputElement>('#outline-input');
+    input.value = '';
+    const render = () => {
+      const results = $('#outline-results');
+      results.replaceChildren();
+      const matched = rankHeadings(headings, input.value, 60);
+      if (!matched.length) {
+        const empty = el('p', 'notes-hint');
+        empty.textContent = headings.length ? 'No heading matches that filter.' : 'This note has no headings yet. Start a line with # or use Ctrl+Shift+1.';
+        results.append(empty);
+        return;
+      }
+      for (const heading of matched) {
+        const button = el('button'); button.type = 'button'; button.setAttribute('role', 'option');
+        button.textContent = `${'·'.repeat(Math.max(0, heading.level - 1))}${'·'.repeat(heading.level > 1 ? 1 : 0)}${heading.text}`;
+        button.title = `Line ${heading.line + 1}`;
+        button.addEventListener('click', () => { $<HTMLDialogElement>('#outline-dialog').close(); this.goToLine(heading.line + 1); });
+        results.append(button);
+      }
+    };
+    render();
+    input.oninput = render;
+    input.onkeydown = (event) => {
+      if ((event as KeyboardEvent).key === 'Enter') { event.preventDefault(); document.querySelector<HTMLButtonElement>('#outline-results button')?.click(); }
+    };
+    $('#outline-status').textContent = headings.length
+      ? `${headings.length} heading${headings.length === 1 ? '' : 's'} in this note.`
+      : 'No headings found.';
+    this.showDialog('outline-dialog');
+    input.focus();
+  }
+
+  private toggleNotesPanel(): void {
+    this.notesOpen = !this.notesOpen;
+    this.renderNotesPanel();
+    this.view?.requestMeasure();
+    if (this.notesOpen) void this.buildNoteIndex();
+  }
+
+  private selectNotesTab(tab: 'outline' | 'tags' | 'links'): void {
+    this.notesTab = tab;
+    this.renderNotesPanel();
+    this.view?.requestMeasure();
+    if (tab !== 'outline') void this.buildNoteIndex();
+  }
+
+  /* Zoom ----------------------------------------------------------------------------------- */
+
+  private zoom(delta: number | 'reset'): void {
+    const next = delta === 'reset' ? 14 : Math.max(11, Math.min(28, this.settings.fontSize + delta));
+    if (next === this.settings.fontSize) return;
+    this.settings.fontSize = next;
+    this.persistSettings();
+    this.toast(`Editor text ${next}px`);
+  }
+
   private updateStatus(): void {
     if (!this.view || !this.active) return;
     const doc = this.active;
@@ -689,12 +1340,6 @@ class MorrowApp {
     const language = $<HTMLSelectElement>('#language');
     language.options[0].textContent = `Auto · ${languageLabel(doc.name, null)}`;
     language.value = doc.override || '__auto__';
-    // Avoid scanning a huge file on every keypress. For large buffers show line count instead.
-    if (doc.state.doc.length > 1_000_000) $('#word-count').textContent = `${doc.state.doc.lines.toLocaleString()} lines`;
-    else {
-      const count = doc.state.doc.toString().trim().match(/\S+/gu)?.length || 0;
-      $('#word-count').textContent = `${count.toLocaleString()} ${count === 1 ? 'word' : 'words'}`;
-    }
   }
 
   private renderRecoveryStatus(): void {
@@ -732,6 +1377,7 @@ class MorrowApp {
   private renderAll(): void {
     if (!this.view) return;
     this.renderFiles(); this.renderDiskChange(); this.updateStatus(); this.renderRecoveryStatus(); this.renderStorageWarning(); this.renderAiStatus(); this.updateMarkdownPreview();
+    this.refreshStats();
   }
 
   private updateMarkdownPreview(): void {
@@ -748,10 +1394,16 @@ class MorrowApp {
 
   private applyEditorPreferences(): void {
     if (!this.view) return;
-    this.view.dispatch({ effects: [
-      wrapCompartment.reconfigure(this.settings.wrap ? EditorView.lineWrapping : []),
-      indentCompartment.reconfigure([EditorState.tabSize.of(this.settings.tabSize), indentUnit.of(' '.repeat(this.settings.tabSize))]),
-    ] });
+    applyEditorExtensions(this.view, this.settings);
+    this.applyTypeface();
+    this.applyFocusModes();
+    this.drawMinimap();
+  }
+
+  private applyTypeface(): void {
+    const holder = $('#editor');
+    holder.classList.toggle('typeface-serif', this.settings.fontFamily === 'serif');
+    holder.classList.toggle('typeface-sans', this.settings.fontFamily === 'sans');
   }
 
   private applySettings(): void {
@@ -770,6 +1422,16 @@ class MorrowApp {
     $<HTMLSelectElement>('#tab-size').value = String(this.settings.tabSize);
     $<HTMLInputElement>('#model-name').value = this.settings.model;
     $('#ai-toggle').setAttribute('aria-checked', String(this.settings.aiEnabled));
+    $<HTMLSelectElement>('#setting-font-family').value = this.settings.fontFamily;
+    $<HTMLSelectElement>('#setting-ruler').value = String(this.settings.maxLineLength);
+    $('#setting-spellcheck').setAttribute('aria-checked', String(this.settings.spellcheck));
+    $('#setting-minimap').setAttribute('aria-checked', String(this.settings.minimap));
+    $('#setting-smart').setAttribute('aria-checked', String(this.settings.smart ?? false));
+    $('#setting-focus').setAttribute('aria-checked', String(this.settings.focus.focus));
+    $('#setting-typewriter').setAttribute('aria-checked', String(this.settings.focus.typewriter));
+    $('#setting-focus-scope').textContent = `Scope: ${this.settings.focus.scope}`;
+    $<HTMLInputElement>('#setting-daily-folder').value = this.settings.daily.folder;
+    $('#setting-goal-value').textContent = this.goalTracker.target ? `${this.goalTracker.words.toLocaleString()} of ${this.goalTracker.target.toLocaleString()}` : 'Off';
     this.applyEditorPreferences();
     this.renderRecoveryStatus();
     this.renderStorageWarning();
@@ -839,6 +1501,27 @@ class MorrowApp {
       case 'shortcuts': this.showDialog('help-dialog'); break;
       case 'ai': this.toggleAiPanel(); break;
       case 'about': await this.confirm('A little space for big ideas.', `Morrow 0.4.0 is an open-source text and code editor. Your files stay yours. This is an early preview; save important work regularly.`, [{ id: 'ok', label: 'Sounds good', style: 'primary' }], 'ABOUT MORROW'); break;
+      case 'bold': case 'italic': case 'code': case 'strike': case 'link': case 'quote': case 'bullets': case 'numbers': case 'tasks': case 'code-block': case 'smart-typography': case 'heading':
+        this.runFormat(action); break;
+      case 'line-duplicate': this.runFormat('line-duplicate'); break;
+      case 'line-delete': this.runFormat('line-delete'); break;
+      case 'line-sort': this.runFormat('line-sort'); break;
+      case 'quick-capture': this.openCapture(); break;
+      case 'daily-note': this.openDailyNote(); break;
+      case 'new-template': this.openTemplateDialog('template'); break;
+      case 'tab-outline': this.showTabOutline(); break;
+      case 'notes-panel': case 'sidebar-notes': this.toggleNotesPanel(); break;
+      case 'build-index': void this.buildNoteIndex(true); break;
+      case 'clear-index': this.noteIndex.clear(); this.indexStale = true; this.toast('The local note index was cleared. Nothing on disk was changed.'); this.renderNotesPanel(); break;
+      case 'focus-mode': this.toggleFocus('focus'); break;
+      case 'typewriter-mode': this.toggleFocus('typewriter'); break;
+      case 'zen-mode': this.toggleFocus('zen'); break;
+      case 'spellcheck': this.settings.spellcheck = !this.settings.spellcheck; this.persistSettings(); this.toast(`Spell-check ${this.settings.spellcheck ? 'on' : 'off'}.`); break;
+      case 'minimap': this.settings.minimap = !this.settings.minimap; this.persistSettings(); this.drawMinimap(); this.toast(`Minimap ${this.settings.minimap ? 'on' : 'off'}.`); break;
+      case 'zoom-in': this.zoom(1); break;
+      case 'zoom-out': this.zoom(-1); break;
+      case 'zoom-reset': this.zoom('reset'); break;
+      case 'goal': this.openGoalDialog(); break;
     }
   }
 
@@ -1149,6 +1832,43 @@ class MorrowApp {
     $('#retry-recovery-cleanup').addEventListener('click', () => { void this.retryRecoveryCleanup(); });
     $('#disk-change-reload').addEventListener('click', () => { void this.reloadActiveFromDisk(); });
     window.addEventListener('focus', () => { void this.checkActiveDisk(); });
+    $('#capture-submit').addEventListener('click', () => { void this.submitCapture(); });
+    $<HTMLTextAreaElement>('#capture-text').addEventListener('keydown', (event) => {
+      if ((event as KeyboardEvent).key === 'Enter' && ((event as KeyboardEvent).ctrlKey || (event as KeyboardEvent).metaKey)) {
+        event.preventDefault(); void this.submitCapture();
+      }
+    });
+    $('#note-create').addEventListener('click', () => { void this.submitNoteDialog(); });
+    $('#goal-save').addEventListener('click', () => {
+      const value = Number($<HTMLInputElement>('#goal-input').value);
+      if (!Number.isFinite(value) || value < 0 || value > 100_000) { $('#goal-status').textContent = 'Enter a whole number between 0 and 100,000.'; return; }
+      this.setGoal(Math.trunc(value));
+      $<HTMLDialogElement>('#goal-dialog').close();
+    });
+    $('#setting-goal').addEventListener('click', () => this.openGoalDialog());
+    $('#goal-chip').addEventListener('click', () => this.openGoalDialog());
+    $('#focus-chip').addEventListener('click', () => { this.settings.focus = { ...this.settings.focus, focus: false, typewriter: false, zen: false }; this.persistSettings(); this.applyFocusModes(); });
+    $('#notes-chip').addEventListener('click', () => this.toggleNotesPanel());
+    for (const tab of ['outline', 'tags', 'links'] as const) {
+      $(`#notes-tab-${tab}`).addEventListener('click', () => this.selectNotesTab(tab));
+    }
+    $('#index-notes-button').addEventListener('click', () => { void this.buildNoteIndex(true); });
+    $('#setting-focus').addEventListener('click', () => this.toggleFocus('focus'));
+    $('#setting-typewriter').addEventListener('click', () => this.toggleFocus('typewriter'));
+    $('#setting-focus-scope').addEventListener('click', () => {
+      this.settings.focus = { ...this.settings.focus, scope: this.settings.focus.scope === 'sentence' ? 'paragraph' : 'sentence' };
+      this.persistSettings(); this.applyFocusModes();
+    });
+    $('#setting-smart').addEventListener('click', () => { this.settings.smart = !this.settings.smart; this.persistSettings(); });
+    $('#setting-spellcheck').addEventListener('click', () => { this.settings.spellcheck = !this.settings.spellcheck; this.persistSettings(); this.toast(`Spell-check ${this.settings.spellcheck ? 'on' : 'off'}.`); });
+    $('#setting-minimap').addEventListener('click', () => { this.settings.minimap = !this.settings.minimap; this.persistSettings(); this.drawMinimap(); });
+    $('#setting-font-family').addEventListener('change', (event) => { this.settings.fontFamily = (event.target as HTMLSelectElement).value as Settings['fontFamily']; this.persistSettings(); });
+    $('#setting-ruler').addEventListener('change', (event) => { this.settings.maxLineLength = Number((event.target as HTMLSelectElement).value); this.persistSettings(); });
+    $('#setting-daily-folder').addEventListener('change', (event) => {
+      const value = (event.target as HTMLInputElement).value.trim();
+      if (value && !isSafeRelativePath(value)) { this.toast('That folder path is not valid; keeping the previous value.'); (event.target as HTMLInputElement).value = this.settings.daily.folder; return; }
+      this.settings.daily.folder = value; this.persistSettings();
+    });
     $('#ai-toggle').addEventListener('click', () => { void this.toggleAi(); });
     $('#ai-action-run').addEventListener('click', () => { void this.runAiAction(); });
     $('#ai-action-cancel').addEventListener('click', () => this.cancelAiAction());
@@ -1259,6 +1979,43 @@ class MorrowApp {
     if (mod && key === 'tab') {
       event.preventDefault(); const index = this.docs.findIndex((doc) => doc.id === this.activeId);
       const direction = event.shiftKey ? -1 : 1; this.switchDoc(this.docs[(index + direction + this.docs.length) % this.docs.length].id); return;
+    }
+    if (event.key === 'F8' && !mod) { event.preventDefault(); this.toggleFocus('focus'); return; }
+    if (event.key === 'F9' && !mod) { event.preventDefault(); this.toggleFocus('typewriter'); return; }
+    if (event.key === 'F11' && !mod) { event.preventDefault(); this.toggleFocus('zen'); return; }
+    if (mod && event.altKey && key === 'n') { event.preventDefault(); event.stopPropagation(); this.openCapture(); return; }
+    if (mod && event.altKey && key === 'd') { event.preventDefault(); event.stopPropagation(); this.openDailyNote(); return; }
+    if (mod && event.altKey && key === 'b') { event.preventDefault(); event.stopPropagation(); this.toggleNotesPanel(); return; }
+    if (mod && !event.altKey && (key === '+' || key === '=' || key === '-' || key === '0')) {
+      event.preventDefault(); event.stopPropagation();
+      this.zoom(key === '0' ? 'reset' : key === '-' ? -(event.shiftKey ? 2 : 1) : event.shiftKey ? 2 : 1);
+      return;
+    }
+    if (mod && event.shiftKey && event.code === 'KeyO') { event.preventDefault(); event.stopPropagation(); this.showTabOutline(); return; }
+    if (mod && !event.altKey && ['b', 'i', 'k'].includes(key) && !event.shiftKey) {
+      // Ctrl+B means "bold" only where bold can exist: a Markdown note with a real selection.
+      // Everywhere else it keeps its documented "toggle sidebar" behaviour.
+      const markdownBuffer = isMarkdownName(this.active.name);
+      const hasSelection = !!this.view && this.view.state.selection.main.from !== this.view.state.selection.main.to;
+      if (key !== 'b' || (markdownBuffer && hasSelection)) {
+        event.preventDefault(); event.stopPropagation();
+        this.runFormat(key === 'b' ? 'bold' : key === 'i' ? 'italic' : 'link');
+        return;
+      }
+    }
+    if (mod && event.shiftKey && /^Digit[1-6]$/u.test(event.code)) {
+      event.preventDefault(); event.stopPropagation();
+      this.runFormat(`heading-${event.code.slice(-1)}`);
+      return;
+    }
+    if (mod && event.shiftKey && event.code === 'KeyQ') { event.preventDefault(); event.stopPropagation(); this.runFormat('quote'); return; }
+    if (mod && event.shiftKey && event.code === 'KeyU') { event.preventDefault(); event.stopPropagation(); this.runFormat('bullets'); return; }
+    if (mod && event.shiftKey && event.code === 'KeyD' && !event.altKey) { event.preventDefault(); event.stopPropagation(); this.runFormat('line-duplicate'); return; }
+    if (mod && event.shiftKey && event.code === 'KeyK' && !event.altKey) { event.preventDefault(); event.stopPropagation(); this.runFormat('line-delete'); return; }
+    if (event.altKey && !mod && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+      event.preventDefault(); event.stopPropagation();
+      this.runFormat(event.key === 'ArrowUp' ? 'line-move-up' : 'line-move-down');
+      return;
     }
     if (event.key === 'F3' && this.findOpen) { event.preventDefault(); event.shiftKey ? findPrevious(this.view) : findNext(this.view); return; }
     if (event.altKey && !mod && key === 'z') { event.preventDefault(); this.toggleWrap(); return; }
