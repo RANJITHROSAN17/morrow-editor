@@ -59,6 +59,8 @@ function run(command, args, options = {}) {
   const result = spawnSync(executable, args, {
     cwd: ROOT,
     encoding: 'utf8',
+    // npm is a .cmd shim on Windows; Node needs a shell to launch it from a child process.
+    shell: process.platform === 'win32' && command === 'npm',
     maxBuffer: 50 * 1024 * 1024,
     ...options,
   });
