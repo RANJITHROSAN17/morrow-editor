@@ -30,12 +30,12 @@
     "markdown-it": "^14.3.3"
   },
   "devDependencies": {
-    "@playwright/test": "^1.57.0",
+    "@playwright/test": "^1.65.0",
     "@tauri-apps/cli": "^2.8.0",
     "@types/markdown-it": "^14.2.0",
     "@types/node": "^26.6.6",
     "typescript": "~5.9.3",
-    "vite": "^8.3.5",
-    "vitest": "^5.0.5"
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
   }
 }
