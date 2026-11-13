@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultFocus, focusClassList, focusLabel, focusRange, isAnyFocusActive, paragraphAround, sanitizeFocus, sentenceAround, typewriterPadding } from '../src/focus-mode';
+import { defaultFocus, focusAnnouncement, focusClassList, focusLabel, focusRange, isAnyFocusActive, paragraphAround, sanitizeFocus, sentenceAround, typewriterPadding } from '../src/focus-mode';
 
 describe('focus mode state', () => {
   it('defaults to a free layout and sanitizes stored values', () => {
@@ -7,6 +7,8 @@ describe('focus mode state', () => {
     expect(sanitizeFocus({ focus: 'yes', scope: 'word', typewriter: 1, zen: true })).toEqual({ focus: false, scope: 'paragraph', typewriter: false, zen: true });
     expect(isAnyFocusActive(defaultFocus)).toBe(false);
     expect(focusLabel(defaultFocus)).toBe('Free layout');
+    expect(focusAnnouncement(defaultFocus)).toBe('Focus, typewriter and zen modes off.');
+    expect(focusAnnouncement({ ...defaultFocus, typewriter: true })).toBe('Typewriter mode on.');
   });
 
   it('maps settings to the classes CSS expects', () => {

@@ -42,6 +42,11 @@ export function focusLabel(settings: FocusSettings): string {
   return active.length ? active.join(' + ') : 'Free layout';
 }
 
+/** Text for the polite live region; it is deliberately concise and never a toast-only message. */
+export function focusAnnouncement(settings: FocusSettings): string {
+  return isAnyFocusActive(settings) ? `${focusLabel(settings)} mode on.` : 'Focus, typewriter and zen modes off.';
+}
+
 /** Classes applied to `<html>` so CSS can react without measuring anything in JavaScript. */
 export function focusClassList(settings: FocusSettings): string[] {
   const classes: string[] = [];

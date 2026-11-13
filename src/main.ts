@@ -27,7 +27,7 @@ import { extractOutline, headingAt, isMarkdownName, rankHeadings, type Heading }
 import { collectTags, extractWikiLinks, resolveWikiTarget } from './notes';
 import { NoteIndex } from './note-index';
 import { buildMinimapBars, minimapAvailable, viewportFraction } from './minimap';
-import { focusClassList, focusLabel, isAnyFocusActive, FOCUS_CLASSES, type FocusSettings } from './focus-mode';
+import { focusAnnouncement, focusClassList, focusLabel, isAnyFocusActive, FOCUS_CLASSES, type FocusSettings } from './focus-mode';
 import { DEFAULT_CAPTURE_SNIPPET, DEFAULT_DAILY_TEMPLATE, expandDailyTemplate, humanDate, isoTime, dailyNotePath, isSafeRelativePath } from './daily';
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string): T => {
@@ -1011,25 +1011,29 @@ class MorrowApp {
 
   /* Focus, typewriter and zen ------------------------------------------------------------- */
 
-  private applyFocusModes(): void {
+  private applyFocusModes(announce = false): void {
     const focus = this.settings.focus;
+    const active = isAnyFocusActive(focus);
     document.documentElement.classList.remove(...FOCUS_CLASSES);
     for (const name of focusClassList(focus)) document.documentElement.classList.add(name);
     const chip = $('#focus-chip');
-    chip.hidden = !isAnyFocusActive(focus);
+    chip.hidden = !active;
+    chip.setAttribute('aria-pressed', String(active));
+    chip.setAttribute('aria-label', active ? `${focusLabel(focus)} mode on. Turn off focus modes` : 'Focus modes off');
     $('#focus-text').textContent = focusLabel(focus);
     $('#setting-focus').setAttribute('aria-checked', String(focus.focus));
     $('#setting-typewriter').setAttribute('aria-checked', String(focus.typewriter));
     $('#setting-focus-scope').textContent = `Scope: ${focus.scope}`;
     if (this.view) applyFocus(this.view, focus);
     this.scheduleTypewriterScroll();
+    if (announce) $('#focus-status').textContent = focusAnnouncement(focus);
   }
 
   private toggleFocus(part: keyof FocusSettings): void {
     if (part === 'scope') return;
     this.settings.focus = { ...this.settings.focus, [part]: !this.settings.focus[part] };
     this.persistSettings();
-    this.applyFocusModes();
+    this.applyFocusModes(true);
     this.toast(focusLabel(this.settings.focus));
   }
 
@@ -1882,7 +1886,7 @@ class MorrowApp {
     });
     $('#setting-goal').addEventListener('click', () => this.openGoalDialog());
     $('#goal-chip').addEventListener('click', () => this.openGoalDialog());
-    $('#focus-chip').addEventListener('click', () => { this.settings.focus = { ...this.settings.focus, focus: false, typewriter: false, zen: false }; this.persistSettings(); this.applyFocusModes(); });
+    $('#focus-chip').addEventListener('click', () => { this.settings.focus = { ...this.settings.focus, focus: false, typewriter: false, zen: false }; this.persistSettings(); this.applyFocusModes(true); });
     $('#notes-chip').addEventListener('click', () => this.toggleNotesPanel());
     for (const tab of ['outline', 'tags', 'links'] as const) {
       $(`#notes-tab-${tab}`).addEventListener('click', () => this.selectNotesTab(tab));
