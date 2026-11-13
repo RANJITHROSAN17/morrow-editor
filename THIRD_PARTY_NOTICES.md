@@ -39,9 +39,9 @@ The tagged Windows workflow generates `npm-sbom.cdx.json` with `npm sbom --packa
 
 The current lockfiles and target-specific Cargo graph use these SPDX identifiers (the gate reports any new identifier for review before a tag can publish):
 
-`0BSD`, `Apache-2.0`, `Apache-2.0 WITH LLVM-exception`, `BSD-2-Clause`, `BSD-3-Clause`, `CC0-1.0`, `ISC`, `LGPL-2.1-or-later`, `LGPL-3.0-only`, `MIT`, `MIT-0`, `MPL-2.0`, `NCSA`, `OFL-1.1`, `OpenSSL`, `Python-2.0`, `Unicode-3.0`, `Unlicense`, and `Zlib`.
+`0BSD`, `Apache-2.0`, `Apache-2.0 WITH LLVM-exception`, `BSD-2-Clause`, `BSD-3-Clause`, `BSL-1.0`, `CC0-1.0`, `CDLA-Permissive-2.0`, `ISC`, `LGPL-2.1-or-later`, `LGPL-3.0-only`, `MIT`, `MIT-0`, `MPL-2.0`, `NCSA`, `OFL-1.1`, `OpenSSL`, `Python-2.0`, `Unicode-3.0`, `Unlicense`, and `Zlib`.
 
-A generated report is retained with every tagged release. It is not a substitute for checking the actual package/crate `LICENSE`, `COPYING`, `NOTICE` and attribution files when dependencies change.
+The BSL-1.0 and CDLA-Permissive-2.0 identifiers currently come from target-specific transitive Cargo packages; the generated `LICENSE-REPORT.json` records each package and version so their exact upstream notices can be audited. A generated report is retained with every tagged release. It is not a substitute for checking the actual package/crate `LICENSE`, `COPYING`, `NOTICE` and attribution files when dependencies change.
 
 ## Separately obtained software
 
