@@ -98,3 +98,25 @@ test('compact top bar keeps Settings and AI controls fully visible and usable', 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
 });
+
+test('focus, typewriter and zen modes announce their state and the focus chip is keyboard-toggleable', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
+
+  await page.keyboard.press('F8');
+  await expect(page.locator('#focus-status')).toHaveText('Focus mode on.');
+  const chip = page.getByRole('button', { name: 'Focus mode on. Turn off focus modes' });
+  await expect(chip).toBeVisible();
+  await expect(chip).toHaveAttribute('aria-pressed', 'true');
+  await chip.focus();
+  await expect(chip).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#focus-status')).toHaveText('Focus, typewriter and zen modes off.');
+  await expect(page.locator('#focus-chip')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#focus-chip')).toBeHidden();
+
+  await page.keyboard.press('F9');
+  await expect(page.locator('#focus-status')).toHaveText('Typewriter mode on.');
+  await page.keyboard.press('F11');
+  await expect(page.locator('#focus-status')).toHaveText('Typewriter + Zen mode on.');
+});
