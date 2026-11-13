@@ -4,7 +4,8 @@ import { MAX_REVIEW_CHARS, makeReviewTarget, normalizeReplacement, reviewDiff, s
 import { ARENA_API_ENDPOINT, ARENA_KEYS_URL, ARENA_PRIVACY_URL, ARENA_WEBSITE, MAX_ARENA_CONTEXT, buildArenaRequest, buildBrowserPrompt, requestArenaBatch, type ArenaMode, type ArenaRequest } from './arena';
 import { findPotentialSecrets } from './sensitive-text';
 import { sha256, encodeFile, decodeFile } from './encoding';
-import { ExternalChangeError, writeTo } from './platform';
+import { ExternalChangeError, writeTo, type FileRef } from './platform';
+import { shouldInvalidateIndexOnSave } from './note-index';
 import { MAX_SEARCH_FILE_BYTES, MAX_WORKSPACE_ROOTS, createWorkspaceEntry, listWorkspaceDirectory, readWorkspaceFile, pickWorkspace, rankWorkspaceFiles, searchWorkspace, walkWorkspace, type DirectoryListing, type NewWorkspaceEntryKind, type SearchResult, type WalkProgress, type WorkspaceDirectory, type WorkspaceFile } from './workspace';
 
 const INDEXABLE_EXTENSIONS = /\.(?:md|markdown|mdown|mkd|mdx|txt|text|kanban)$/iu;
@@ -37,7 +38,7 @@ export interface WorkbenchHost {
   /** Append text to a note at a folder-relative path, creating it when absent. */
   appendToFolderNote(rootName: string | null, relative: string, text: string): Promise<void>;
   /** Files available to the note index: every note in every open folder. */
-  indexableFiles(): Promise<{ name: string; relative: string; rootName: string; text: string }[]>;
+  indexableFiles(signal?: AbortSignal): Promise<{ name: string; relative: string; rootName: string; text: string }[]>;
   onIndexChanged(): void;
   listOpenDocuments(): OpenDocument[];
   recentPaths(): string[];
@@ -745,6 +746,25 @@ export class Workbench {
     return this.roots.map((root) => root.folder.name);
   }
 
+  /** Whether a successfully saved tab belongs to an open folder and can change the note index. */
+  async savedFileIsInOpenFolder(ref: FileRef | null): Promise<boolean> {
+    if (!ref || ref.kind === 'download') return false;
+    if (ref.kind === 'native') {
+      const roots = this.roots.flatMap((root) => root.folder.kind === 'native' ? [root.folder.path] : []);
+      return shouldInvalidateIndexOnSave(ref.path, roots);
+    }
+    for (const root of this.roots) {
+      if (root.folder.kind !== 'browser') continue;
+      const directory = root.folder.handle as FileSystemDirectoryHandle & { resolve?: (handle: FileSystemHandle) => Promise<string[] | null> };
+      if (typeof directory.resolve !== 'function') continue;
+      try {
+        const parts = await directory.resolve(ref.handle);
+        if (parts && this.roots.includes(root)) return true;
+      } catch { /* An unavailable browser identity must not guess that a save is inside the folder. */ }
+    }
+    return false;
+  }
+
   private chooseRoot(rootName: string | null): WorkspaceRootState | null {
     if (!this.roots.length) return null;
     if (!rootName) return this.roots[0];
@@ -836,18 +856,21 @@ export class Workbench {
   }
 
   /** Every note in every open folder, read through the bounded workspace path. */
-  async indexableFiles(): Promise<{ name: string; relative: string; rootName: string; text: string }[]> {
+  async indexableFiles(signal?: AbortSignal): Promise<{ name: string; relative: string; rootName: string; text: string }[]> {
     const out: { name: string; relative: string; rootName: string; text: string }[] = [];
     for (const root of this.roots) {
+      if (signal?.aborted) break;
       try {
         await walkWorkspace(root.folder, async (entry) => {
+          if (signal?.aborted) return false;
           if (!INDEXABLE_EXTENSIONS.test(entry.name)) return;
           if (out.length >= 1_000) return false;
           try {
             const opened = await readWorkspaceFile(entry, MAX_SEARCH_FILE_BYTES);
+            if (signal?.aborted) return false;
             out.push({ name: entry.name, relative: entry.relative, rootName: root.folder.name, text: decodeFile(opened.bytes).text });
           } catch { /* An unreadable note is skipped; the index reports what it could read. */ }
-        });
+        }, { signal });
       } catch { /* A folder that cannot be walked contributes nothing. */ }
     }
     return out;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildIndex, buildNoteRecord, MAX_INDEX_FILE_BYTES, MAX_INDEX_FILES, NoteIndex, type IndexWalkEntry } from '../src/note-index';
+import { buildIndex, buildNoteRecord, isPathInsideRoot, MAX_INDEX_FILE_BYTES, MAX_INDEX_FILES, NoteIndex, shouldInvalidateIndexOnSave, type IndexWalkEntry } from '../src/note-index';
 import { dailyNotePath, expandDailyTemplate, isSafeRelativePath, isoDate } from '../src/daily';
 
 const note = (relative: string, text: string, rootName = 'vault') => ({
@@ -18,6 +18,40 @@ describe('note records', () => {
     expect(record.links.map((link) => link.target)).toEqual(['Roadmap']);
     expect(record.words).toBeGreaterThan(3);
     expect(record.indexedAt).toBe(5);
+  });
+});
+
+describe('save invalidation decision', () => {
+  it('marks a successful save inside an open native folder stale', () => {
+    const roots = ['C:\\Vault', 'D:\\Work\\Notes'];
+    expect(shouldInvalidateIndexOnSave('C:\\Vault\\Plan.md', roots)).toBe(true);
+    expect(shouldInvalidateIndexOnSave('c:/vault/projects/Plan.md', roots)).toBe(true);
+    expect(shouldInvalidateIndexOnSave('C:\\Vault\\', roots)).toBe(true);
+    expect(shouldInvalidateIndexOnSave('D:\\Work\\Notes\\Inbox.md', roots)).toBe(true);
+  });
+
+  it('does not confuse a sibling folder prefix with containment', () => {
+    const roots = ['C:\\Vault', '/home/me/vault'];
+    expect(shouldInvalidateIndexOnSave('C:\\Vault2\\Plan.md', roots)).toBe(false);
+    expect(shouldInvalidateIndexOnSave('C:\\Vault-old\\Plan.md', roots)).toBe(false);
+    expect(shouldInvalidateIndexOnSave('/home/me/vault2/Plan.md', roots)).toBe(false);
+    expect(shouldInvalidateIndexOnSave('/home/me/other/Plan.md', roots)).toBe(false);
+  });
+
+  it('ignores saves with no folder path and empty workspaces', () => {
+    expect(shouldInvalidateIndexOnSave(null, ['C:\\Vault'])).toBe(false);
+    expect(shouldInvalidateIndexOnSave(undefined, ['C:\\Vault'])).toBe(false);
+    expect(shouldInvalidateIndexOnSave('', ['C:\\Vault'])).toBe(false);
+    expect(shouldInvalidateIndexOnSave('C:\\Vault\\Plan.md', [])).toBe(false);
+    expect(shouldInvalidateIndexOnSave('C:\\Vault\\Plan.md', ['', '   '])).toBe(false);
+  });
+
+  it('handles nested POSIX paths and filesystem roots', () => {
+    expect(isPathInsideRoot('/home/me/vault/notes/Plan.md', '/home/me/vault/')).toBe(true);
+    expect(shouldInvalidateIndexOnSave('/home/me/vault/notes/Plan.md', ['/home/me/vault'])).toBe(true);
+    expect(shouldInvalidateIndexOnSave('C:\\Plan.md', ['C:\\'])).toBe(true);
+    expect(shouldInvalidateIndexOnSave('/Plan.md', ['/'])).toBe(true);
+    expect(shouldInvalidateIndexOnSave('relative/Plan.md', ['/'])).toBe(false);
   });
 });
 
