@@ -30,6 +30,9 @@ jobs:
       - name: Validate roadmap manifest
         run: node scripts/validate-roadmap.js .github/roadmap.json
 
+      - name: Static security boundary audit
+        run: npm run audit:static
+
       - name: Unit tests (Vitest)
         run: npm test
 
