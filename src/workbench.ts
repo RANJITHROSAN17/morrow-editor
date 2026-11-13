@@ -4,7 +4,8 @@ import { MAX_REVIEW_CHARS, makeReviewTarget, normalizeReplacement, reviewDiff, s
 import { ARENA_API_ENDPOINT, ARENA_KEYS_URL, ARENA_PRIVACY_URL, ARENA_WEBSITE, MAX_ARENA_CONTEXT, buildArenaRequest, buildBrowserPrompt, requestArenaBatch, type ArenaMode, type ArenaRequest } from './arena';
 import { findPotentialSecrets } from './sensitive-text';
 import { sha256, encodeFile, decodeFile } from './encoding';
-import { ExternalChangeError, writeTo, type FileRef } from './platform';
+import { isSafeRelativePath } from './daily';
+import { ExternalChangeError, writeTo, type FileRef, type OpenedFile } from './platform';
 import { shouldInvalidateIndexOnSave } from './note-index';
 import { MAX_SEARCH_FILE_BYTES, MAX_WORKSPACE_ROOTS, createWorkspaceEntry, listWorkspaceDirectory, readWorkspaceFile, pickWorkspace, rankWorkspaceFiles, searchWorkspace, walkWorkspace, type DirectoryListing, type NewWorkspaceEntryKind, type SearchResult, type WalkProgress, type WorkspaceDirectory, type WorkspaceFile } from './workspace';
 
@@ -36,7 +37,7 @@ export interface WorkbenchHost {
   /** Open a note that lives at a folder-relative path, creating it from `template` if missing. */
   openFolderNote(rootName: string | null, relative: string, template: string): Promise<void>;
   /** Append text to a note at a folder-relative path, creating it when absent. */
-  appendToFolderNote(rootName: string | null, relative: string, text: string): Promise<void>;
+  appendToFolderNote(rootName: string | null, relative: string, text: string, header?: string): Promise<void>;
   /** Files available to the note index: every note in every open folder. */
   indexableFiles(signal?: AbortSignal): Promise<{ name: string; relative: string; rootName: string; text: string }[]>;
   onIndexChanged(): void;
@@ -793,11 +794,23 @@ export class Workbench {
     return directory;
   }
 
+  private isMissingFolderError(error: unknown): boolean {
+    return (error instanceof DOMException && error.name === 'NotFoundError')
+      || (error instanceof Error && /does not exist\.$/u.test(error.message));
+  }
+
   private async findFile(root: WorkspaceRootState, relative: string): Promise<WorkspaceFile | null> {
     const segments = relative.split('/').filter(Boolean);
     const name = segments.pop();
     if (!name) return null;
-    const parent = await this.resolveFolder(root, segments, false);
+    let parent: WorkspaceDirectory;
+    try { parent = await this.resolveFolder(root, segments, false); }
+    catch (error) {
+      // Missing daily/capture folders are created by ensureFolderNote; permission,
+      // link and I/O failures must still abort instead of being mistaken for absence.
+      if (this.isMissingFolderError(error)) return null;
+      throw error;
+    }
     const listing = await listWorkspaceDirectory(parent);
     const found = listing.entries.find((entry) => entry.type === 'file' && entry.name === name);
     return (found as WorkspaceFile | undefined) ?? null;
@@ -809,6 +822,7 @@ export class Workbench {
    */
   async ensureFolderNote(rootName: string | null, relative: string, template: string): Promise<{ file: WorkspaceFile; created: boolean; rootName: string }> {
     if (!this.roots.length) throw new Error('Open a folder first — daily notes and captures live inside one.');
+    if (!isSafeRelativePath(relative)) throw new Error('The note path must stay inside the selected workspace folder.');
     const root = this.chooseRoot(rootName);
     if (!root) throw new Error('Open a folder first.');
     if (!(await this.sameFolder(root.folder, root.folder))) throw new Error('The open folder changed.');
@@ -820,24 +834,28 @@ export class Workbench {
     const parent = await this.resolveFolder(root, segments, true);
     const entry = await createWorkspaceEntry(root.folder, parent, name, 'file') as WorkspaceFile;
     if (template) {
-      // A brand-new file is empty; write the template through the same bounded write path.
-      await this.writeWorkspaceText(entry, template, null);
+      // Creation is exclusive, so the empty-file hash is the version we are allowed to replace.
+      // Passing `absent` here would reject the file we just created on native platforms.
+      await this.writeWorkspaceText(entry, template, await sha256(new Uint8Array()));
     }
     await this.refreshRoot(root);
     return { file: entry, created: true, rootName: root.folder.name };
   }
 
-  private async writeWorkspaceText(entry: WorkspaceFile, text: string, expectedHash: string | null): Promise<void> {
-    const opened = await readWorkspaceFile(entry);
-    const current = await sha256(opened.bytes);
-    if (expectedHash && expectedHash !== current) throw new ExternalChangeError();
+  private async writeWorkspaceText(entry: WorkspaceFile, text: string, expectedHash: string | null, opened?: OpenedFile): Promise<void> {
+    const source = opened ?? await readWorkspaceFile(entry);
+    const current = await sha256(source.bytes);
+    if (expectedHash !== null && expectedHash !== current) throw new ExternalChangeError();
     const bytes = encodeFile(text, 'UTF-8', 'LF');
-    await writeTo(opened.ref, bytes, entry.name, expectedHash ? current : null);
+    // Always pass the version that was actually read. Native safe_write verifies it
+    // again immediately before replacement; browser writes perform the same check.
+    await writeTo(source.ref, bytes, entry.name, current);
   }
 
   /** Append `text` to a folder-relative note, creating it when it does not exist yet. */
   async appendToNote(rootName: string | null, relative: string, text: string, header = ''): Promise<{ file: WorkspaceFile; created: boolean; rootName: string }> {
     if (!this.roots.length) throw new Error('Open a folder first.');
+    if (!isSafeRelativePath(relative)) throw new Error('The note path must stay inside the selected workspace folder.');
     const root = this.chooseRoot(rootName);
     if (!root) throw new Error('Open a folder first.');
     const existing = await this.findFile(root, relative);
@@ -850,7 +868,7 @@ export class Workbench {
     const separator = decoded.text.length && !decoded.text.endsWith('\n') ? '\n' : '';
     const prefix = decoded.text.length ? `${separator}\n` : '';
     const next = `${decoded.text}${prefix}${header ? `${header}\n` : ''}${text}${text.endsWith('\n') ? '' : '\n'}`;
-    await this.writeWorkspaceText(existing, next, await sha256(opened.bytes));
+    await this.writeWorkspaceText(existing, next, await sha256(opened.bytes), opened);
     await this.refreshRoot(root);
     return { file: existing, created: false, rootName: root.folder.name };
   }
