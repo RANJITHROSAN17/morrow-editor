@@ -28,7 +28,7 @@ import { collectTags, extractWikiLinks, resolveWikiTarget } from './notes';
 import { NoteIndex } from './note-index';
 import { buildMinimapBars, minimapAvailable, viewportFraction } from './minimap';
 import { focusAnnouncement, focusClassList, focusLabel, isAnyFocusActive, FOCUS_CLASSES, type FocusSettings } from './focus-mode';
-import { DEFAULT_CAPTURE_SNIPPET, DEFAULT_DAILY_TEMPLATE, expandDailyTemplate, humanDate, isoTime, dailyNotePath, isSafeRelativePath } from './daily';
+import { DEFAULT_CAPTURE_SNIPPET, DEFAULT_DAILY_TEMPLATE, MAX_CAPTURE_CHARS, expandDailyTemplate, humanDate, isoTime, dailyNotePath, isSafeRelativePath } from './daily';
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string): T => {
   const value = document.querySelector<T>(selector);
@@ -114,6 +114,8 @@ class MorrowApp {
   private notesTab: 'outline' | 'tags' | 'links' = 'outline';
   private minimapCanvas: HTMLCanvasElement | null = null;
   private typewriterRaf = 0;
+  private captureInFlight = false;
+  private noteSubmitInFlight = false;
 
   constructor() {
     const loaded = loadSettings();
@@ -135,8 +137,8 @@ class MorrowApp {
       listOpenDocuments: () => this.docs.map((doc) => ({ id: doc.id, name: doc.name, detail: refPath(doc.ref) || doc.displayPath || (doc.sample ? 'Example' : 'Unsaved'), path: refPath(doc.ref) })),
       recentPaths: () => this.settings.rememberRecent ? [...this.settings.recentFiles] : [],
       switchDocument: (id) => this.switchDoc(id),
-      openFolderNote: (rootName, relative, template) => this.openFolderNote(rootName, relative, template),
-      appendToFolderNote: (rootName, relative, text) => this.appendToFolderNote(rootName, relative, text),
+      openFolderNote: async (rootName, relative, template) => { await this.openFolderNote(rootName, relative, template); },
+      appendToFolderNote: (rootName, relative, text, header) => this.appendToFolderNote(rootName, relative, text, header),
       indexableFiles: (signal) => this.workbench.indexableFiles(signal),
       onIndexChanged: () => this.invalidateNoteIndex(),
     });
@@ -1165,24 +1167,25 @@ class MorrowApp {
 
   /* Notes: capture, daily notes, templates ------------------------------------------------- */
 
-  private async openFolderNote(rootName: string | null, relative: string, template: string, line?: number): Promise<void> {
+  private async openFolderNote(rootName: string | null, relative: string, template: string, line?: number): Promise<boolean> {
     if (!this.workbench.workspaceNames().length) {
       this.toast('Open a folder first — folder notes live inside the folder you chose.');
-      return;
+      return false;
     }
     try {
       // The workbench owns file creation so a template is written through one bounded path.
       const result = await this.workbench.ensureFolderNote(rootName, relative, template);
       const doc = await this.openWorkspaceFile(result.file);
-      if (!doc) return;
+      if (!doc) return false;
       if (line) this.goToLine(line);
       if (!result.created) this.toast(`${relative} is already in your folder — opened it instead of overwriting.`);
-    } catch (error) { this.toast(`Could not open ${relative}: ${this.errorText(error)}`); }
+      return true;
+    } catch (error) { this.toast(`Could not open ${relative}: ${this.errorText(error)}`); return false; }
     finally { this.invalidateNoteIndex(); }
   }
 
   private async appendToFolderNote(rootName: string | null, relative: string, text: string, header = ''): Promise<void> {
-    if (!this.workbench.workspaceNames().length) { this.toast('Open a folder first — capture writes into it.'); return; }
+    if (!this.workbench.workspaceNames().length) throw new Error('Open a folder first — capture writes into it.');
     try {
       const result = await this.workbench.appendToNote(rootName, relative, text, header);
       // Re-read through the ordinary open path so an already-open tab is replaced by the
@@ -1191,8 +1194,10 @@ class MorrowApp {
       if (open) await this.replaceDocFromDisk(open);
       else await this.openWorkspaceFile(result.file);
       this.toast(result.created ? `Captured to a new ${relative}.` : `Captured to ${relative}.`);
-    } catch (error) { this.toast(`Could not capture: ${this.errorText(error)}`); }
-    finally { this.invalidateNoteIndex(); }
+    } catch (error) {
+      this.toast(`Could not capture: ${this.errorText(error)}`);
+      throw error;
+    } finally { this.invalidateNoteIndex(); }
   }
 
   /** Swap an open tab's text for the file on disk, keeping the tab and its cursor line. */
@@ -1226,11 +1231,12 @@ class MorrowApp {
 
   private capturePath(): string {
     const raw = this.settings.capturePath.trim();
-    if (raw && isSafeRelativePath(raw)) return raw.endsWith('.md') ? raw : `${raw}.md`;
-    return 'Inbox.md';
+    const candidate = /\.md$/iu.test(raw) ? raw : `${raw}.md`;
+    return raw && isSafeRelativePath(candidate) ? candidate : 'Inbox.md';
   }
 
   private openCapture(): void {
+    if (this.captureInFlight) return;
     if (!this.workbench.workspaceNames().length) { this.toast('Open a folder first — quick capture writes into it.'); return; }
     $('#capture-target-name').textContent = this.capturePath();
     $<HTMLTextAreaElement>('#capture-text').value = '';
@@ -1241,30 +1247,39 @@ class MorrowApp {
   }
 
   private async submitCapture(): Promise<void> {
+    // The disabled button is a UI affordance; this guard also covers Ctrl+Enter,
+    // synthetic clicks and any second caller while the filesystem operation is pending.
+    if (this.captureInFlight) return;
     const text = $<HTMLTextAreaElement>('#capture-text').value.trim();
     if (!text) { $('#capture-status').textContent = 'Write something first — an empty capture is not appended.'; return; }
-    if (text.length > 20_000) { $('#capture-status').textContent = 'Captures are limited to 20,000 characters.'; return; }
+    if (text.length > MAX_CAPTURE_CHARS) { $('#capture-status').textContent = `Captures are limited to ${MAX_CAPTURE_CHARS.toLocaleString()} characters.`; return; }
     const asTasks = $<HTMLInputElement>('#capture-task').checked;
     const now = new Date();
     const body = text.split('\n').map((line) => asTasks && line.trim() && !/^\s*[-*+]\s/u.test(line) ? `- [ ] ${line.trim()}` : line).join('\n');
-    const block = `${DEFAULT_CAPTURE_SNIPPET.replace(/\{\{\s*time\s*\}\}/giu, isoTime(now))}${body}\n`;
+    const header = DEFAULT_CAPTURE_SNIPPET.replace(/\{\{\s*time\s*\}\}/giu, isoTime(now)).replace(/\n$/u, '');
     const button = $<HTMLButtonElement>('#capture-submit');
+    this.captureInFlight = true;
     button.disabled = true;
     $('#capture-status').textContent = 'Appending…';
     try {
-      await this.appendToFolderNote(null, this.capturePath(), block);
+      await this.appendToFolderNote(null, this.capturePath(), body, header);
       $<HTMLDialogElement>('#capture-dialog').close();
     } catch (error) { $('#capture-status').textContent = this.errorText(error); }
-    finally { button.disabled = false; }
+    finally {
+      this.captureInFlight = false;
+      button.disabled = false;
+    }
   }
 
   private openDailyNote(): void {
     if (!this.workbench.workspaceNames().length) { this.toast('Open a folder first — today’s note is written into it.'); return; }
-    const now = new Date();
-    const relative = `${dailyNotePath(this.settings.daily.format, now, this.settings.daily.folder)}.md`;
-    const title = humanDate(now);
-    const template = this.settings.daily.template || DEFAULT_DAILY_TEMPLATE;
-    void this.openFolderNote(null, relative, expandDailyTemplate(template, now, title));
+    try {
+      const now = new Date();
+      const relative = `${dailyNotePath(this.settings.daily.format, now, this.settings.daily.folder)}.md`;
+      const title = humanDate(now);
+      const template = this.settings.daily.template || DEFAULT_DAILY_TEMPLATE;
+      void this.openFolderNote(null, relative, expandDailyTemplate(template, now, title));
+    } catch (error) { this.toast(`Could not prepare today’s note: ${this.errorText(error)}`); }
   }
 
   private openTemplateDialog(kind: 'daily' | 'template'): void {
@@ -1285,6 +1300,9 @@ class MorrowApp {
   }
 
   private async submitNoteDialog(): Promise<void> {
+    // Match the capture guard: disabling the button must not be the only protection
+    // against two creates racing through the read/create/write sequence.
+    if (this.noteSubmitInFlight) return;
     const name = $<HTMLInputElement>('#note-name').value.trim();
     const folder = $<HTMLInputElement>('#note-folder').value.trim();
     const template = $<HTMLInputElement>('#note-use-template').checked ? $<HTMLTextAreaElement>('#note-template').value : '';
@@ -1294,16 +1312,21 @@ class MorrowApp {
     const relative = `${folder ? `${folder.replace(/^[\\/]+|[\\/]+$/gu, '')}/` : ''}${name.endsWith('.md') ? name : `${name}.md`}`;
     const now = new Date();
     const body = template ? expandDailyTemplate(template, now, name.replace(/\.md$/iu, '')) : '';
+    this.noteSubmitInFlight = true;
     $<HTMLButtonElement>('#note-create').disabled = true;
     $('#note-dialog-status').textContent = 'Creating…';
     try {
-      await this.openFolderNote(null, relative, body);
+      const opened = await this.openFolderNote(null, relative, body);
+      if (!opened) { $('#note-dialog-status').textContent = 'The note was not created. Review the error message and try again.'; return; }
       this.settings.daily.template = $<HTMLTextAreaElement>('#note-template').value.slice(0, 50_000);
       this.settings.daily.folder = folder;
       this.persistSettings();
       $<HTMLDialogElement>('#note-dialog').close();
     } catch (error) { $('#note-dialog-status').textContent = this.errorText(error); }
-    finally { $<HTMLButtonElement>('#note-create').disabled = false; }
+    finally {
+      this.noteSubmitInFlight = false;
+      $<HTMLButtonElement>('#note-create').disabled = false;
+    }
   }
 
   private showTabOutline(): void {

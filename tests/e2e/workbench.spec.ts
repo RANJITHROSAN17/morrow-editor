@@ -124,6 +124,22 @@ test('same-named files in different folders remain distinct and show their paths
   await expect(page.locator('.cm-content')).toContainText('source copy edited');
 });
 
+test('quick capture creates and appends exactly once while its first write is in flight', async ({ page }) => {
+  await freshProject(page); await openFolder(page);
+  await page.locator('[data-menu="notes"]').click();
+  await page.locator('[data-menu-panel="notes"] [data-action="quick-capture"]').click();
+  await page.locator('#capture-text').fill('A single captured thought');
+  await page.evaluate(() => {
+    const button = document.querySelector<HTMLButtonElement>('#capture-submit')!;
+    const event = new MouseEvent('click', { bubbles: true });
+    button.dispatchEvent(event);
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await expect(page.locator('#toast')).toContainText('Captured to a new Inbox.md.');
+  expect(await page.evaluate(() => (window as Window & { __projectCreates?: number }).__projectCreates)).toBe(1);
+  expect(await page.evaluate(() => (window as Window & { __projectWrites?: number }).__projectWrites)).toBe(1);
+});
+
 test('quick open, go to line and the command palette work with keyboard shortcuts', async ({ page }) => {
   await freshProject(page); await openFolder(page);
   await page.keyboard.press('Control+p');
