@@ -1,6 +1,6 @@
 # Third-party components and license review
 
-This is an **inventory of the principal direct dependencies**, not a complete third-party notices file or a legal audit. The source archive does not include `node_modules`, Rust build artifacts, an AI model, or the WebView2 runtime. Building or distributing an executable brings in additional transitive dependencies; before distributing binaries, generate a complete dependency/SBOM and license inventory from both lockfiles and include all required copyright, license and attribution notices. Check the actual downloaded package and crate contents, including `LICENSE`, `COPYING` and `NOTICE` files. Some crates have target-specific dependencies.
+This is an **inventory of the principal direct dependencies**, not legal advice or a substitute for reviewing each package's notices. The source archive does not include `node_modules`, Rust build artifacts, an AI model, or the WebView2 runtime. The tagged Windows workflow generates a complete transitive SBOM and license report from the npm and Cargo lockfiles, then rejects publication when license metadata or approved SPDX coverage is missing. Maintainers must still check changed package and crate contents, including `LICENSE`, `COPYING` and `NOTICE` files; some crates have target-specific dependencies.
 
 The following license expressions and versions were read from the installed package/crate metadata and lockfiles on 30 October 2026. They may change when dependencies are updated. An `OR` expression permits a choice between the named licenses, subject to their terms. This information is not legal advice.
 
@@ -33,9 +33,19 @@ Development/build-only packages (including TypeScript, Vite, Vitest, Playwright 
 
 See `src-tauri/Cargo.lock` and the source of each crate for the complete resolved dependency graph and notices.
 
+## Tagged-release SBOM and license gate
+
+The tagged Windows workflow generates `npm-sbom.cdx.json` with `npm sbom --package-lock-only --sbom-format cyclonedx`, `cargo-metadata.json` with `cargo metadata --locked`, and a machine-readable `LICENSE-REPORT.json`. The release job refuses to publish when a resolved package has no license metadata or when an SPDX identifier emitted by either dependency graph is absent from this file. The generated SBOM is the complete transitive inventory; this document is the reviewed license-identifier and attribution index, not legal advice.
+
+The current lockfiles and target-specific Cargo graph use these SPDX identifiers (the gate reports any new identifier for review before a tag can publish):
+
+`0BSD`, `Apache-2.0`, `Apache-2.0 WITH LLVM-exception`, `BSD-2-Clause`, `BSD-3-Clause`, `CC0-1.0`, `ISC`, `LGPL-2.1-or-later`, `LGPL-3.0-only`, `MIT`, `MIT-0`, `MPL-2.0`, `NCSA`, `OFL-1.1`, `OpenSSL`, `Python-2.0`, `Unicode-3.0`, `Unlicense`, and `Zlib`.
+
+A generated report is retained with every tagged release. It is not a substitute for checking the actual package/crate `LICENSE`, `COPYING`, `NOTICE` and attribution files when dependencies change.
+
 ## Separately obtained software
 
 - The suggested [`qwen2.5-coder:1.5b` model](https://ollama.com/library/qwen2.5-coder:1.5b) is not included in the app or source archive; its Ollama model page lists Apache License 2.0. Check model provenance, the current model license and any other applicable terms before use or redistribution.
 - [Ollama](https://github.com/ollama/ollama) is installed separately, with its own license and terms.
 - The app uses Microsoft's WebView2 runtime on Windows. The runtime/installer is obtained separately and is subject to Microsoft's terms; it is not covered by Morrow's MIT license.
-- Windows installation tooling and any installer bootstrapper have their own terms. This prototype's unsigned installer workflow has not yet been audited for redistribution.
+- Windows installation tooling, NSIS and any WebView2 bootstrapper have their own terms. Review those terms separately before redistributing a packaged installer; they are not covered by Morrow's MIT license.
