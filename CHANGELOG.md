@@ -2,6 +2,11 @@
 
 ## Unreleased — after 0.4.0
 
+### Release trust
+
+- Add a read-only Windows build plus tag-only publish boundary with tag/version/commit/checksum guards, CycloneDX npm and Cargo metadata SBOMs, SPDX coverage validation, GitHub artifact attestations and downloadable offline provenance bundles.
+- Add optional Authenticode signing with RFC 3161 timestamping and expected publisher-thumbprint verification. A missing certificate remains an explicitly labelled `unsigned-preview`; no automatic updater or forced migration is introduced. See [`docs/RELEASE-VERIFICATION.md`](docs/RELEASE-VERIFICATION.md).
+
 ### The writing layer
 
 - Add a **writing surface**: live words, characters, paragraphs, lines and reading time in the status bar; an optional **daily word goal** that counts only positive per-document deltas, resets at local midnight and is stored locally; and a **minimap** that tiles the document exactly, marks the caret, is click-to-jump, and disables itself above 400,000 characters instead of stalling.
