@@ -27,6 +27,7 @@ test('the editor focus indicator remains visible in both themes and forced color
 
 test('settings has a named dialog and labelled theme and font controls', async ({ page }) => {
   await page.goto('/');
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Appearance' })).toBeVisible();
@@ -35,6 +36,7 @@ test('settings has a named dialog and labelled theme and font controls', async (
 
 test('tab close buttons work with Enter and Space, and tab arrows switch focus', async ({ page }) => {
   await page.goto('/');
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   await expect(page.locator('#tabs [role="tab"]')).toHaveCount(2);
   const activeTab = page.locator('#tabs [role="tab"][aria-selected="true"]');
   await activeTab.focus(); await page.keyboard.press('ArrowRight');
@@ -51,6 +53,7 @@ test('tab close buttons work with Enter and Space, and tab arrows switch focus',
 
 test('application menus support arrow keys and Escape returns focus to the trigger', async ({ page }) => {
   await page.goto('/');
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   const trigger = page.getByRole('button', { name: 'File', exact: true });
   await trigger.click(); await page.keyboard.press('ArrowDown');
   await expect(page.locator('[data-menu-panel="file"] [role="menuitem"]').first()).toBeFocused();

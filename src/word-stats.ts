@@ -1,7 +1,7 @@
 /**
  * word-stats — bounded, allocation-light text metrics for the status bar.
  *
- * Every other editor shows a word count; almost none explain *how* they count. Morrow's
+ * Every other editor shows a word count; almost none explain *how* they count. Wrytrove's
  * answers are written down here, unit-tested, and identical for a 2-word note and a 200 MB
  * log, because the counters stream over the string instead of splitting it.
  *

@@ -12,6 +12,8 @@ const ratio = (foreground: string, background: string) => {
 
 test('visible quick-open affordance is keyboard operable', async ({ page }) => {
   await page.goto('/');
+  // Keys pressed while startup recovery holds #app inert are ignored; wait for the editor to be ready.
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   const quick = page.getByRole('button', { name: 'Quick open files' });
   await quick.focus(); await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog', { name: 'Quick open' })).toBeVisible();
@@ -22,6 +24,7 @@ test('visible quick-open affordance is keyboard operable', async ({ page }) => {
 
 test('primary controls and light-theme tab icons remain legible', async ({ page }) => {
   await page.goto('/');
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   for (const theme of ['dark', 'light']) {
     if (theme === 'light') {
       await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -49,6 +52,7 @@ test('primary controls and light-theme tab icons remain legible', async ({ page 
 test('compact header keeps the brand and menus separate', async ({ page }) => {
   await page.setViewportSize({ width: 704, height: 500 });
   await page.goto('/');
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   const brand = await page.locator('.brand-name').boundingBox();
   const file = await page.getByRole('button', { name: 'File', exact: true }).boundingBox();
   expect(brand).not.toBeNull(); expect(file).not.toBeNull();

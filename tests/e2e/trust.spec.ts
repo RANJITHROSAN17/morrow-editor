@@ -13,7 +13,7 @@ async function writeDraft(page: Page, text: string, waitForSave = true): Promise
   if (waitForSave) {
     // Recovery is deliberately debounced. Poll the actual record rather than assuming a fast disk.
     await expect.poll(() => page.evaluate((needle) => new Promise<boolean>((resolve) => {
-      const request = indexedDB.open('morrow-local-session-v1', 1);
+      const request = indexedDB.open('wrytrove-local-session-v1', 1);
       request.onerror = () => resolve(false);
       request.onsuccess = () => {
         const db = request.result;
@@ -33,11 +33,11 @@ test('failed preference writes are visible and an old AI-on setting never re-ena
     const get = Storage.prototype.getItem;
     const set = Storage.prototype.setItem;
     if (!get.call(sessionStorage, 'test-settings-seeded')) {
-      set.call(localStorage, 'morrow.settings.v1', JSON.stringify({ aiEnabled: true, recovery: true, wrap: false }));
+      set.call(localStorage, 'wrytrove.settings.v1', JSON.stringify({ aiEnabled: true, recovery: true, wrap: false }));
       set.call(sessionStorage, 'test-settings-seeded', 'yes');
     }
     Storage.prototype.setItem = function (key, value) {
-      if (this === localStorage && key === 'morrow.settings.v1') throw new DOMException('Full', 'QuotaExceededError');
+      if (this === localStorage && key === 'wrytrove.settings.v1') throw new DOMException('Full', 'QuotaExceededError');
       return set.call(this, key, value);
     };
   });
@@ -47,7 +47,7 @@ test('failed preference writes are visible and an old AI-on setting never re-ena
   await page.getByRole('switch', { name: 'Word wrap' }).click();
   await expect(page.locator('#settings-storage-message')).toContainText('Settings could not be saved');
   await expect(page.locator('#storage-warning')).toContainText('may revert after restarting');
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('morrow.settings.v1')!).aiEnabled)).toBe(true);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('wrytrove.settings.v1')!).aiEnabled)).toBe(true);
   await page.reload();
   await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   await expect(page.locator('#ai-top-state')).toHaveText('OFF');
@@ -57,7 +57,7 @@ test('failed recovery opt-out persistence is not reported as a durable success',
   await page.addInitScript(() => {
     const set = Storage.prototype.setItem;
     Storage.prototype.setItem = function (key, value) {
-      if (this === localStorage && key === 'morrow.settings.v1') throw new DOMException('Full', 'QuotaExceededError');
+      if (this === localStorage && key === 'wrytrove.settings.v1') throw new DOMException('Full', 'QuotaExceededError');
       return set.call(this, key, value);
     };
   });
@@ -75,7 +75,7 @@ test('unreadable settings pause recovery without deleting or overwriting the old
     if (get.call(sessionStorage, 'test-fail-settings-read') === 'yes') {
       sessionStorage.removeItem('test-fail-settings-read');
       Storage.prototype.getItem = function (key) {
-        if (this === localStorage && key === 'morrow.settings.v1') throw new DOMException('Blocked', 'SecurityError');
+        if (this === localStorage && key === 'wrytrove.settings.v1') throw new DOMException('Blocked', 'SecurityError');
         return get.call(this, key);
       };
     }
@@ -155,7 +155,7 @@ test('failed snapshot writes warn and recover after storage is available again',
 test('an incompatible recovery snapshot remains untouched', async ({ page }) => {
   await ready(page);
   await page.evaluate(async () => new Promise<void>((resolve, reject) => {
-    const request = indexedDB.open('morrow-local-session-v1', 1);
+    const request = indexedDB.open('wrytrove-local-session-v1', 1);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result;
@@ -170,7 +170,7 @@ test('an incompatible recovery snapshot remains untouched', async ({ page }) => 
   await expect(page.locator('#storage-warning')).toContainText('previous recovery session could not be read');
   await page.waitForTimeout(1600);
   const stored = await page.evaluate(async () => new Promise<unknown>((resolve, reject) => {
-    const request = indexedDB.open('morrow-local-session-v1', 1);
+    const request = indexedDB.open('wrytrove-local-session-v1', 1);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result;
@@ -236,7 +236,7 @@ test('failed recovery deletion remains visible and can be retried', async ({ pag
   await expect(page.locator('#storage-warning')).toBeHidden();
   await expect(page.locator('#recovery-status')).toContainText('Session recovery off');
   const value = await page.evaluate(async () => new Promise<unknown>((resolve, reject) => {
-    const request = indexedDB.open('morrow-local-session-v1', 1);
+    const request = indexedDB.open('wrytrove-local-session-v1', 1);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result;
@@ -280,7 +280,7 @@ test('a mixed batch opens valid files and lists all individual failures', async 
 test('recovery keeps more than 100 tabs rather than silently truncating the snapshot', async ({ page }) => {
   await ready(page);
   await page.evaluate(async () => new Promise<void>((resolve, reject) => {
-    const request = indexedDB.open('morrow-local-session-v1', 1);
+    const request = indexedDB.open('wrytrove-local-session-v1', 1);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result;
@@ -299,7 +299,7 @@ test('recovery keeps more than 100 tabs rather than silently truncating the snap
   await expect(page.locator('#file-count')).toHaveText('101');
   await expect(page.locator('.cm-content')).toContainText('contents 100');
   await expect.poll(() => page.evaluate(async () => new Promise<{ count: number; resaved: boolean }>((resolve, reject) => {
-    const request = indexedDB.open('morrow-local-session-v1', 1);
+    const request = indexedDB.open('wrytrove-local-session-v1', 1);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result;
@@ -334,7 +334,7 @@ test('quota failure keeps the previous snapshot, saves only metadata, and warns 
   await page.keyboard.insertText('another new draft');
   await expect(page.locator('.cm-content')).toContainText('another new draft');
   const stored = await page.evaluate(async () => new Promise<{ current: { documents: { text: string }[] }; metadata: { documents: object[] } }>((resolve, reject) => {
-    const request = indexedDB.open('morrow-local-session-v1', 1);
+    const request = indexedDB.open('wrytrove-local-session-v1', 1);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result, tx = db.transaction('session', 'readonly'), store = tx.objectStore('session');

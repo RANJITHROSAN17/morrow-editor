@@ -210,7 +210,7 @@ test('startup prevents actions until asynchronous recovery has initialized the e
     Object.defineProperty(window, 'showOpenFilePicker', { value: async () => { win.__opened = true; return []; } });
   });
   await page.goto('/');
-  await expect(page.locator('#startup-status')).toHaveText('Starting Morrow…');
+  await expect(page.locator('#startup-status')).toHaveText('Starting Wrytrove…');
   await expect(page.locator('#app')).toHaveAttribute('inert', '');
   await page.locator('[data-action="open"]').first().dispatchEvent('click');
   expect(await page.evaluate(() => (window as Window & { __opened?: boolean }).__opened)).toBeUndefined();

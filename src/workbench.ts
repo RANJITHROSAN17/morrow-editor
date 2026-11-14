@@ -152,8 +152,8 @@ export class Workbench {
   private async openFolder(add: boolean): Promise<void> {
     if (add && this.roots.length >= MAX_WORKSPACE_ROOTS) { this.host.toast(`A workspace can contain up to ${MAX_WORKSPACE_ROOTS} folders.`); return; }
     const choice = await this.host.confirm(add ? 'Add a folder?' : 'Choose a folder?', add
-      ? 'Choose another folder to add. Morrow can read its files and may write there when you explicitly save or create an item. It does not run folder contents. Open files remain open. Desktop access to selected paths may remain in Morrow’s saved file-access scope after removal.'
-      : 'Morrow can read files inside the folder you select, and may write there when you explicitly save or create an item. Searches stay on this device and do not change files. Opening a folder replaces the current folder view but leaves open files alone. On desktop, selected folder access may remain in Morrow’s saved file-access scope after the folder view is closed.', [
+      ? 'Choose another folder to add. Wrytrove can read its files and may write there when you explicitly save or create an item. It does not run folder contents. Open files remain open. Desktop access to selected paths may remain in Wrytrove’s saved file-access scope after removal.'
+      : 'Wrytrove can read files inside the folder you select, and may write there when you explicitly save or create an item. Searches stay on this device and do not change files. Opening a folder replaces the current folder view but leaves open files alone. On desktop, selected folder access may remain in Wrytrove’s saved file-access scope after the folder view is closed.', [
       { id: 'cancel', label: 'Cancel' }, { id: 'choose', label: 'Choose folder', style: 'primary' },
     ], 'FOLDER ACCESS');
     if (choice !== 'choose') return;
@@ -683,7 +683,7 @@ export class Workbench {
     const safetyNotice = findings.length ? ` Possible sensitive content detected: ${findings.join(', ')}. The check can be mistaken or incomplete; review the exact text before sending.` : ' The automatic credential check is incomplete; review the exact text for sensitive data before sending.';
     const modelNames = requests.map((item) => `“${item.model.trim()}”`).join(' and ');
     const choice = await this.host.confirm(compare ? 'Send two requests to Arena?' : 'Send request to Arena?',
-      `Send your ${mode === 'edit' ? 'edit instruction' : 'question'} and ${request.selection.length.toLocaleString()} captured characters to ${ARENA_API_ENDPOINT} using ${modelNames}. ${compare ? 'This makes two separate requests, and both may incur charges. ' : ''}This is a cloud service; API charges, provider sharing and retention depend on your Arena account and terms. Morrow does not add file paths or other files, but your text may contain them.${safetyNotice}`,
+      `Send your ${mode === 'edit' ? 'edit instruction' : 'question'} and ${request.selection.length.toLocaleString()} captured characters to ${ARENA_API_ENDPOINT} using ${modelNames}. ${compare ? 'This makes two separate requests, and both may incur charges. ' : ''}This is a cloud service; API charges, provider sharing and retention depend on your Arena account and terms. Wrytrove does not add file paths or other files, but your text may contain them.${safetyNotice}`,
       [{ id: 'cancel', label: 'Cancel' }, { id: 'send', label: compare ? 'Send both requests' : 'Send to Arena', style: 'primary' }], 'EXPLICIT CLOUD CONSENT');
     if (choice !== 'send' || this.arenaTarget !== target || !$<HTMLDialogElement>('#arena-dialog').open || (target && !this.host.targetIsCurrent(target))) return;
     // If anything changed while consent was open, require a fresh review.

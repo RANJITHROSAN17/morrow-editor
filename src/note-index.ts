@@ -157,7 +157,7 @@ export class NoteIndex {
     for (const record of this.records.values()) {
       for (const link of record.links) {
         // Only a unique match counts. An ambiguous link links nothing, so a reader is never told
-        // a note is connected when Morrow cannot tell which note was meant.
+        // a note is connected when Wrytrove cannot tell which note was meant.
         for (const candidate of uniqueMatches(link.target, candidates)) {
           linked.add(NoteIndex.id(record.rootName, candidate.relative ?? candidate.name));
         }

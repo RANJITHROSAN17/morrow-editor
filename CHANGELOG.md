@@ -7,6 +7,12 @@
 - Add a read-only Windows build plus tag-only publish boundary with tag/version/commit/checksum guards, CycloneDX npm and Cargo metadata SBOMs, SPDX coverage validation, GitHub artifact attestations and downloadable offline provenance bundles.
 - Add optional Authenticode signing with RFC 3161 timestamping and expected publisher-thumbprint verification. A missing certificate remains an explicitly labelled `unsigned-preview`; no automatic updater or forced migration is introduced. See [`docs/RELEASE-VERIFICATION.md`](docs/RELEASE-VERIFICATION.md).
 
+### Brand rename
+
+- Rename the product, package, Cargo crate/library, Tauri product name, window title, file-association label, UI copy, documentation and automation from Morrow to **Wrytrove**. The version remains `0.4.0`.
+- Read pre-rename settings, daily goals and IndexedDB recovery snapshots as fallbacks; new writes use Wrytrove keys. The desktop bundle identifier stays `app.morrow.editor` so existing WebView storage and folder permissions are not orphaned. Keep old roadmap issue markers recognizable so closed tasks are not filed again.
+- Rename the visual-explainer document and screenshot assets. Historical branch names, the published `Morrow_0.4.0_x64-setup.exe` filename, repository URLs and the naming-analysis record are intentionally preserved.
+
 ### The writing layer
 
 - Add a **writing surface**: live words, characters, paragraphs, lines and reading time in the status bar; an optional **daily word goal** that counts only positive per-document deltas, resets at local midnight and is stored locally; and a **minimap** that tiles the document exactly, marks the caret, is click-to-jump, and disables itself above 400,000 characters instead of stalling.
@@ -25,7 +31,7 @@
 ### Tests and docs
 
 - 250 unit tests across 25 files, including new suites for word statistics, outlines, notes and front matter, Markdown formatting, focus modes, Markdown extensions, the note index, discovery, the daily goal and the minimap. `npx tsc --noEmit` is clean.
-- Add [Morrow at a glance](docs/MORROW-AT-A-GLANCE.md), a one-image visual explainer of what the app is, a day with it, and an honest list of what is still unproven.
+- Add [Wrytrove at a glance](docs/WRYTROVE-AT-A-GLANCE.md), a one-image visual explainer of what the app is, a day with it, and an honest list of what is still unproven.
 
 - Add **reviewable AI actions on a selection**: Improve, Fix grammar, Shorten, Expand, Summarize, Bullet points, Explain and Custom. Replace actions open the existing diff review and never edit or save automatically; Explain is read-only. Only the selected text (up to 12,000 characters) and an optional instruction (up to 2,000) are sent to Ollama, after a separate per-session consent. Requests are cancellable, time out after 60 seconds, and are refused if the selection changed. Output is bounded, cleaned, and treated as untrusted text. Unit tests cover limits, delimiter collisions, output cleaning and the transport path; a real model response on Windows remains unverified.
 - Add [competitive audit, user-expectation research and AI upgrade plan](docs/COMPETITIVE-AUDIT-AND-ROADMAP-2026-11.md), covering the most-starred notepad, note-taking and AI-editor repositories, licensing cautions, a table-stakes gap list and a phased roadmap.
@@ -47,7 +53,7 @@
 - Open one explicitly selected folder, browse it lazily, and search its **saved files** with literal text and optional case/extension/name filters. Traversal, file sizes and results are bounded; generated folders, unsupported items and errors are disclosed. See the README for exact limits and exclusions.
 - Add quick open (`Ctrl+P`), go to line (`Ctrl+G`), a command palette (`Ctrl+Shift+P`) and an optional, default-off recent native paths list with a clear control and storage-failure warnings.
 - Compare a pasted replacement with one selected editor range before accepting it. Changes apply to the editor only, as one isolated undo step. Stale targets are rejected and Markdown is not silently stripped.
-- Offer a normal-browser Arena workflow with manual copy/paste, plus an optional Arena API panel requiring an eligible key and explicit confirmation for every request. Keys are not persisted by Morrow. A Linux synthetic invalid-key request returned HTTP 401; authenticated success remains unverified. API access, model availability, billing and privacy depend on the user's account.
+- Offer a normal-browser Arena workflow with manual copy/paste, plus an optional Arena API panel requiring an eligible key and explicit confirmation for every request. Keys are not persisted by Wrytrove. A Linux synthetic invalid-key request returned HTTP 401; authenticated success remains unverified. API access, model availability, billing and privacy depend on the user's account.
 - Add an opt-in, locally rendered Markdown preview that follows unsaved edits. It uses an isolated worker and bounded inert DOM nodes; links and images are disabled and raw HTML is text. Limits and Windows verification caveats are in the README.
 - Warn locally about a few potential credential patterns before an Arena API send. This is a limited, fallible heuristic, not a guarantee or a redaction tool. Clarify that Ollama's loopback API can route cloud models.
 - Bound native folder enumeration and reads before IPC, skip detected links/reparse points, and restrict the HTTP plugin's redirect scope. Parent-directory and filesystem races remain; closing a folder view does not revoke persisted Tauri access.

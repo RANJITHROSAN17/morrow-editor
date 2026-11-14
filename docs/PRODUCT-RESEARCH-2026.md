@@ -1,15 +1,17 @@
-# Morrow product research and future roadmap
+# Wrytrove product research and future roadmap
+
+> **Historical naming note:** product references in this snapshot now use Wrytrove. Original repository URLs, branch names, commit IDs and released artifact filenames are preserved as evidence.
 
 **Research date:** 30 October 2026
-**Product:** Morrow, an early open-source Windows text and code editor
+**Product:** Wrytrove, an early open-source Windows text and code editor
 **Audience:** project owner, contributors and prospective testers
 **Decision status:** historical research snapshot and hypotheses from 30 October 2026, not current-release commitments. The implementation and validation status changed afterward; see [the 0.3.0 implementation notes](IMPLEMENTATION-0.3.0.md). In particular, the later Windows Server review found a 0.2.0 new-file save blocker, and the current 0.3.0 source candidate remains unreleased.
 
 ## Executive summary
 
-**Recommended position:** Morrow should be a small, approachable editor for ordinary text and quick code work, with files the user controls and AI that is optional, transparent and reviewable. Its best opportunity is not to out-IDE VS Code or out-agent Cursor. It is to make common editing tasks trustworthy and understandable, while allowing people to bring a local model or deliberately use a cloud assistant.
+**Recommended position:** Wrytrove should be a small, approachable editor for ordinary text and quick code work, with files the user controls and AI that is optional, transparent and reviewable. Its best opportunity is not to out-IDE VS Code or out-agent Cursor. It is to make common editing tasks trustworthy and understandable, while allowing people to bring a local model or deliberately use a cloud assistant.
 
-**Most important finding:** reliability, accessibility and trust must precede an ambitious AI-agent roadmap. A developer survey found that 48.0% of the 14,304 people answering its trust question said they trust AI output when they can easily verify it; that supports testing reviewable AI as a product hypothesis, not treating it as proven demand among Morrow users. The same survey reports that 76.5% of 13,162 respondents run AI output locally as a next step [1](https://survey.stackoverflow.co/2026/ai/data/ai-trust) [2](https://survey.stackoverflow.co/2026/ai/data).
+**Most important finding:** reliability, accessibility and trust must precede an ambitious AI-agent roadmap. A developer survey found that 48.0% of the 14,304 people answering its trust question said they trust AI output when they can easily verify it; that supports testing reviewable AI as a product hypothesis, not treating it as proven demand among Wrytrove users. The same survey reports that 76.5% of 13,162 respondents run AI output locally as a next step [1](https://survey.stackoverflow.co/2026/ai/data/ai-trust) [2](https://survey.stackoverflow.co/2026/ai/data).
 
 **What has been added in the current 0.2.0 source:** folder browsing and bounded saved-file search, navigation, pasted-change review, a manual browser-based Arena path and optional API panel. In response to this research, the source also includes an optional Markdown preview that does not load document-specified images or links, and a limited local warning for a few possible credential patterns before an Arena API send. The warning is not a scanner or a guarantee; the preview is intentionally limited. Their Windows behavior has not been verified.
 
@@ -21,15 +23,15 @@
 
 ## 1. Scope and methodology
 
-This is **secondary product research plus an inspection of Morrow's current code, documentation and automated tests**. We reviewed official product documentation for Notepad++, Windows Notepad, VS Code, Zed, Cursor, Obsidian and other editors; standards and guidance for language servers, Windows accessibility, privacy and AI security; and recent developer survey and GitHub reports. Public claims in vendor documentation are treated as vendor descriptions, not independent benchmark results. Sources were accessed on or before 30 October 2026 and may change.
+This is **secondary product research plus an inspection of Wrytrove's current code, documentation and automated tests**. We reviewed official product documentation for Notepad++, Windows Notepad, VS Code, Zed, Cursor, Obsidian and other editors; standards and guidance for language servers, Windows accessibility, privacy and AI security; and recent developer survey and GitHub reports. Public claims in vendor documentation are treated as vendor descriptions, not independent benchmark results. Sources were accessed on or before 30 October 2026 and may change.
 
-We did **not** conduct Morrow user interviews, field studies, a representative survey, a comparative performance benchmark, an independent penetration test, or a complete Windows usability/accessibility evaluation. We have not verified a successful authenticated Arena response or a real local-model response in the current release. The developer surveys and GitHub telemetry describe their own populations, not Morrow's users. Where this report recommends a feature, its value and priority are explicitly hypotheses.
+We did **not** conduct Wrytrove user interviews, field studies, a representative survey, a comparative performance benchmark, an independent penetration test, or a complete Windows usability/accessibility evaluation. We have not verified a successful authenticated Arena response or a real local-model response in the current release. The developer surveys and GitHub telemetry describe their own populations, not Wrytrove's users. Where this report recommends a feature, its value and priority are explicitly hypotheses.
 
 ### Product constraints
 
 - Free and open-source editor, primarily for Windows; the core editor should not require an account.
 - Support both ordinary text/notes and quick source-code edits with broad syntax coloring.
-- Keep AI optional and preserve clear user control over what is shared and applied. Cloud provider access may be paid or account-dependent even when Morrow itself is free.
+- Keep AI optional and preserve clear user control over what is shared and applied. Cloud provider access may be paid or account-dependent even when Wrytrove itself is free.
 - Aim for a responsive, modest application; do not claim comparative speed, installer size or memory superiority without reproducible Windows measurements.
 - Prefer interoperable text files over a proprietary database. Recovery is helpful but is not a backup.
 
@@ -42,9 +44,9 @@ We did **not** conduct Morrow user interviews, field studies, a representative s
 | **Everyday note taker:** open or make a note, read it comfortably and find it later. | Tabs, text files, themes, basic search, optional local Markdown preview. | Is preview discoverable and readable? Can a new user understand saved vs unsaved and recovery vs backup? |
 | **Developer doing a quick edit:** browse a project, find a string and save a small change safely. | Broad syntax-color catalog, folder tree, literal saved-file search, go-to-line, quick open. | Search ignores unsaved buffers; no semantic completion, diagnostics, definition or trustworthy large-file measurements. |
 | **AI-assisted editor:** ask for a suggestion without surrendering control. | Session-only Ollama opt-in; manual Arena browser path; API confirmation; captured selection, diff review and undo. | Is the consent understandable? How useful is single-line completion? Can users verify changes efficiently? |
-| **Accessibility- or privacy-sensitive user:** work without an account and understand data flows. | Keyboard commands, selected contrast fixes, local file editing, no Morrow account, optional AI. | Screen reader, Windows contrast themes, scaling, recovery storage and real-world threat boundaries need hands-on testing. |
+| **Accessibility- or privacy-sensitive user:** work without an account and understand data flows. | Keyboard commands, selected contrast fixes, local file editing, no Wrytrove account, optional AI. | Screen reader, Windows contrast themes, scaling, recovery storage and real-world threat boundaries need hands-on testing. |
 
-**Positioning statement to test:** “A free, open-source Windows editor for notes and code. Your files remain ordinary files; AI is optional, and proposed changes are yours to review.” This is a positioning hypothesis, not a promise of total privacy or a claim that no underlying OS component ever uses the network. Morrow's optional Arena API is cloud-based; Ollama's locally addressed API can also route to cloud models [1](https://docs.ollama.com/api/authentication).
+**Positioning statement to test:** “A free, open-source Windows editor for notes and code. Your files remain ordinary files; AI is optional, and proposed changes are yours to review.” This is a positioning hypothesis, not a promise of total privacy or a claim that no underlying OS component ever uses the network. Wrytrove's optional Arena API is cloud-based; Ollama's locally addressed API can also route to cloud models [1](https://docs.ollama.com/api/authentication).
 
 **Avoid saying:** “always offline,” “never sends data,” “secure by design,” “faster than Notepad++,” “fully private local AI,” or “production-ready” until each claim has an appropriate, tested scope.
 
@@ -54,16 +56,16 @@ We did **not** conduct Morrow user interviews, field studies, a representative s
 
 This compares useful product behaviors, not complete feature lists or speed measurements. Editions, availability and pricing can change.
 
-| Product | Observed strengths | Morrow implication |
+| Product | Observed strengths | Wrytrove implication |
 |---|---|---|
 | **Notepad++** | Mature Windows text editing, search/replace across files, sessions and rich configuration. Its documented preference can search unsaved open versions instead of the disk version [2](https://npp-user-manual.org/docs/searching/) [1](https://npp-user-manual.org/docs/preferences/). | Do not market folder search as unique. Make saved-versus-unsaved search explicit and dependable; earn trust through data handling and simplicity. |
 | **Windows Notepad** | Familiar, built-in text editing; Microsoft documents optional Rewrite, Summarize and Write for supported Windows Insider configurations, with Microsoft sign-in/cloud credits for the described GPT features [1](https://support.microsoft.com/en-us/windows/ai/ai-apps/enhance-your-writing-with-ai-in-notepad). | “AI in Notepad” alone is not a differentiator. Test whether transparent provider choice and reviewed edits matter, while matching basic ease of use. |
 | **VS Code** | Extensive language intelligence and extensions; Markdown preview, outline and security controls for untrusted workspaces [1](https://code.visualstudio.com/docs/languages/markdown) [1](https://code.visualstudio.com/docs/editing/workspaces/workspace-trust). | A small preview can help notes and READMEs. Any future code execution or server integration needs an explicit trust boundary; do not copy the entire IDE. |
-| **Zed** | Edit prediction supports multiple providers including local/self-hosted options; its UI offers partial acceptance and configurable behavior [1](https://zed.dev/docs/ai/edit-prediction). | Provider choice, flexible acceptance and low-friction interaction are plausible future improvements, but Morrow's present single-line completion is much narrower. |
+| **Zed** | Edit prediction supports multiple providers including local/self-hosted options; its UI offers partial acceptance and configurable behavior [1](https://zed.dev/docs/ai/edit-prediction). | Provider choice, flexible acceptance and low-friction interaction are plausible future improvements, but Wrytrove's present single-line completion is much narrower. |
 | **Cursor** | Agent-oriented development and documented organizational controls including privacy and agent protections [1](https://cursor.com/docs/enterprise/security-hardening). | Agent features bring operating, authorization and security obligations. Review and least privilege must be structural, not just prompt wording. |
-| **Obsidian** | Markdown notes remain plain files in a local folder and can be edited by other tools [1](https://obsidian.md/help/data-storage). | Keep Morrow's files portable; do not introduce lock-in just to add notes features. A preview is useful without becoming a whole knowledge-management platform. |
+| **Obsidian** | Markdown notes remain plain files in a local folder and can be edited by other tools [1](https://obsidian.md/help/data-storage). | Keep Wrytrove's files portable; do not introduce lock-in just to add notes features. A preview is useful without becoming a whole knowledge-management platform. |
 
-**Gap rather than parity:** Morrow's chosen niche is an approachable *small-editor workflow with intentional AI*. It cannot currently claim feature parity with any mature competitor. It must first prove that open, edit, save, recover and search are dependable on Windows.
+**Gap rather than parity:** Wrytrove's chosen niche is an approachable *small-editor workflow with intentional AI*. It cannot currently claim feature parity with any mature competitor. It must first prove that open, edit, save, recover and search are dependable on Windows.
 
 ---
 
@@ -71,15 +73,15 @@ This compares useful product behaviors, not complete feature lists or speed meas
 
 ### A. Verification and model choice are more useful than AI novelty
 
-The Stack Overflow 2026 survey shows substantial conditional trust in AI and self-reported verification practices; it is not a random sample of all editor users [1](https://survey.stackoverflow.co/2026/ai/data/ai-trust) [2](https://survey.stackoverflow.co/2026/ai/data). GitHub reports that 61% of Copilot users who selected a model themselves used more than one model across sessions in September 2026; that is a GitHub-specific population, not evidence that 61% of Morrow users need multi-model UI [1](https://github.blog/news-insights/octoverse/octoverse-commits-pushes-reach-new-highs-in-2026-as-developers-build-with-agents/).
+The Stack Overflow 2026 survey shows substantial conditional trust in AI and self-reported verification practices; it is not a random sample of all editor users [1](https://survey.stackoverflow.co/2026/ai/data/ai-trust) [2](https://survey.stackoverflow.co/2026/ai/data). GitHub reports that 61% of Copilot users who selected a model themselves used more than one model across sessions in September 2026; that is a GitHub-specific population, not evidence that 61% of Wrytrove users need multi-model UI [1](https://github.blog/news-insights/octoverse/octoverse-commits-pushes-reach-new-highs-in-2026-as-developers-build-with-agents/).
 
 **Decision:** keep explicit capture, compare, reject, apply and undo. Make possible costs and provider/data routes visible. Test a small number of provider choices only after real user demand and authentication are verified. Do not add autonomous command execution to make AI appear more advanced.
 
 ### B. Local address does not equal local inference
 
-Ollama's own documentation demonstrates a cloud model invoked through `http://localhost:11434` after sign-in [1](https://docs.ollama.com/api/authentication). Morrow cannot infer where computation occurred merely from the loopback URL or the model name.
+Ollama's own documentation demonstrates a cloud model invoked through `http://localhost:11434` after sign-in [1](https://docs.ollama.com/api/authentication). Wrytrove cannot infer where computation occurred merely from the loopback URL or the model name.
 
-**Decision:** say what Morrow sends to Ollama, warn that Ollama can route to cloud models, and point people to their model/configuration and Ollama's cloud controls. Do not promise on-device processing unless the complete path is verified. The recommended local model is downloaded separately and performance varies.
+**Decision:** say what Wrytrove sends to Ollama, warn that Ollama can route to cloud models, and point people to their model/configuration and Ollama's cloud controls. Do not promise on-device processing unless the complete path is verified. The recommended local model is downloaded separately and performance varies.
 
 ### C. Language intelligence is valuable but crosses a trust boundary
 
@@ -172,7 +174,7 @@ Real-time collaboration, CRDT synchronization, multi-agent orchestration, plugin
 
 Recruit roughly 12–15 Windows volunteers: people who mainly write notes, developers who make quick edits, and people using assistive technology or high display scaling. These are proposed starting numbers, not a representative sample. Avoid asking participants to expose personal files; use synthetic fixtures. Ask informed consent before recording screens or collecting feedback, and allow participation without telemetry.
 
-Run comparable tasks on the latest Morrow build and, where appropriate, each person's usual editor:
+Run comparable tasks on the latest Wrytrove build and, where appropriate, each person's usual editor:
 
 1. Open a Markdown file, make an unsaved change, use preview and save it somewhere new.
 2. Open a folder, find a term, identify whether the result is from disk or an unsaved buffer, then navigate to it.
@@ -184,7 +186,7 @@ Record completion, help needed, wrong assumptions, recoverability and qualitativ
 
 ### B. Reproducible Windows benchmark proposal
 
-Document CPU, RAM, storage, GPU, Windows build, power mode, WebView2 version, display scale, Morrow commit and AI/recovery state. Use synthetic UTF-8 files and identical scenarios. Measure cold and warm start to interactive editor, idle/peak memory, time to open and search 1/5/20 MiB text and a 5,000-file folder, edit latency, Markdown preview behavior, and save duration. Include a low-resource and a typical machine; run multiple repetitions and report median plus range. Account for OS caching and compare other editors only with their versions, settings and workloads disclosed.
+Document CPU, RAM, storage, GPU, Windows build, power mode, WebView2 version, display scale, Wrytrove commit and AI/recovery state. Use synthetic UTF-8 files and identical scenarios. Measure cold and warm start to interactive editor, idle/peak memory, time to open and search 1/5/20 MiB text and a 5,000-file folder, edit latency, Markdown preview behavior, and save duration. Include a low-resource and a typical machine; run multiple repetitions and report median plus range. Account for OS caching and compare other editors only with their versions, settings and workloads disclosed.
 
 Do not set a “fastest” claim based on browser screenshots or Linux runs. Establish a baseline first; then agree on budgets and track regressions in CI where meaningful. A real AI benchmark should report model, context, hardware, warm-up, first-token and completion latency, memory, qualitative usefulness and failure rate separately.
 
@@ -206,7 +208,7 @@ Default to no product analytics. Use optional issue reports, opt-in interviews a
 
 **Questions to validate with actual users**
 
-1. Do most people need an exceptionally small quick editor, or a broader IDE with semantic navigation? Where is the line they do not want Morrow to cross?
+1. Do most people need an exceptionally small quick editor, or a broader IDE with semantic navigation? Where is the line they do not want Wrytrove to cross?
 2. Should folder search default to unsaved buffer contents, saved files, or ask the user? What labels make the difference clear?
 3. Would Markdown outline, split view, snippets or keyboard customization save more time than AI expansion?
 4. Which specific languages and user-installed servers are worth supporting first? What execution permissions are acceptable?
@@ -217,4 +219,4 @@ Default to no product analytics. Use optional issue reports, opt-in interviews a
 
 ## Source guide
 
-Primary sources linked throughout include the 2026 Stack Overflow developer survey, GitHub Octoverse, Notepad++ manual, Microsoft Notepad and Windows ML documentation, VS Code documentation, Zed documentation, Cursor security guidance, Obsidian storage documentation, Ollama documentation, LSP, MCP, OWASP and Microsoft accessibility guidance. The survey, GitHub telemetry and vendor claims have different populations and methods; none is a direct measure of Morrow demand. See also the earlier `RESEARCH-AND-ROADMAP.md`, the project README and `THIRD_PARTY_NOTICES.md` for technical and licensing details.
+Primary sources linked throughout include the 2026 Stack Overflow developer survey, GitHub Octoverse, Notepad++ manual, Microsoft Notepad and Windows ML documentation, VS Code documentation, Zed documentation, Cursor security guidance, Obsidian storage documentation, Ollama documentation, LSP, MCP, OWASP and Microsoft accessibility guidance. The survey, GitHub telemetry and vendor claims have different populations and methods; none is a direct measure of Wrytrove demand. See also the earlier `RESEARCH-AND-ROADMAP.md`, the project README and `THIRD_PARTY_NOTICES.md` for technical and licensing details.

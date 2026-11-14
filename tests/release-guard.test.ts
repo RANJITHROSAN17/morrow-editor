@@ -21,7 +21,7 @@ describe('tagged release guard', () => {
     expect(execFileSync(process.execPath, [resolve(root, 'scripts/release.mjs'), 'verify-tag', 'v0.4.0'], {
       cwd: root,
       encoding: 'utf8',
-    })).toContain('matches Morrow 0.4.0');
+    })).toContain('matches Wrytrove 0.4.0');
 
     const invalid = runRelease('verify-tag', 'v0.4.1');
     expect(invalid.status).not.toBe(0);

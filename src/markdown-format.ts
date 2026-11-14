@@ -3,7 +3,7 @@
  *
  * Every entry-level notepad has Ctrl+B and Ctrl+I; most Markdown editors (Typora, iA Writer,
  * Obsidian) also toggle headings, links, quotes, lists and code, and "smart" punctuation that
- * turns quotes and dashes into typographic characters. Morrow does the same **without** an
+ * turns quotes and dashes into typographic characters. Wrytrove does the same **without** an
  * extra dependency: these are pure functions over `{from, to, text}` so they are unit-tested
  * exactly like the rest of the editor core.
  *

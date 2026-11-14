@@ -1,7 +1,7 @@
 /**
  * outline — a heading map for Markdown and plain-text notes.
  *
- * Obsidian, Typora and Logseq all put a table of contents beside the document; Morrow's
+ * Obsidian, Typora and Logseq all put a table of contents beside the document; Wrytrove's
  * version works on unsaved buffers (not only files on disk) and never touches the DOM, so the
  * parsing, ranking and limits can be unit-tested without a browser.
  *

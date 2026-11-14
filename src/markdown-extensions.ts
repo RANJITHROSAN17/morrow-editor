@@ -1,5 +1,5 @@
 /**
- * markdown-extensions — the Markdown dialect Morrow renders.
+ * markdown-extensions — the Markdown dialect Wrytrove renders.
  *
  * Plain CommonMark is the floor, not the ceiling. Obsidian users expect `[[wikilinks]]`,
  * `#tags`, `- [ ]` task lists and `> [!note]` callouts; GitHub users expect the same callouts;
@@ -94,7 +94,7 @@ export function renderCallouts(source: string): string {
 }
 
 /**
- * `$inline$` and `$$block$$` math. Morrow does not bundle a TeX renderer (a new dependency, a
+ * `$inline$` and `$$block$$` math. Wrytrove does not bundle a TeX renderer (a new dependency, a
  * font, and an injection surface), so math is shown as a labelled, monospaced literal and the
  * user can copy it into another tool. Saying so plainly beats pretending to render.
  */

@@ -45,7 +45,9 @@ export const defaults: Settings = {
   daily: { format: 'yyyy-mm-dd', template: DEFAULT_DAILY_TEMPLATE, folder: 'Daily' },
   capturePath: '',
 };
-export const SETTINGS_KEY = 'morrow.settings.v1';
+export const SETTINGS_KEY = 'wrytrove.settings.v1';
+/** Read-only compatibility for settings saved before the Wrytrove rename. */
+export const LEGACY_SETTINGS_KEY = 'morrow.settings.v1';
 export interface SavedDocument {
   id: string;
   name: string;
@@ -69,7 +71,7 @@ export interface LoadedSettings { settings: Settings; readFailed: boolean; }
 /** On a read error, pause recovery rather than guessing an old privacy preference. */
 export function loadSettings(): LoadedSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
+    const raw = localStorage.getItem(SETTINGS_KEY) ?? localStorage.getItem(LEGACY_SETTINGS_KEY);
     const parsed: unknown = raw === null ? {} : JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid settings');
     const saved = parsed as Partial<Settings>;
@@ -152,36 +154,60 @@ export function isValidSession(value: unknown): value is Session {
   return !session.documents.length || ids.has(session.activeId);
 }
 
-const DB = 'morrow-local-session-v1';
-let dbPromise: Promise<IDBDatabase> | null = null;
-function database(): Promise<IDBDatabase> {
+const DB = 'wrytrove-local-session-v1';
+/** Recovery snapshots written before the Wrytrove rename remain readable. */
+export const LEGACY_DB = 'morrow-local-session-v1';
+const dbPromises = new Map<string, Promise<IDBDatabase>>();
+function database(name = DB): Promise<IDBDatabase> {
+  let dbPromise = dbPromises.get(name) ?? null;
   if (!dbPromise) {
     const pending = new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(DB, 1);
+      const request = indexedDB.open(name, 1);
       let rejected = false;
       request.onupgradeneeded = () => request.result.createObjectStore('session');
       request.onsuccess = () => {
         const db = request.result;
         if (rejected) { db.close(); return; }
-        db.onversionchange = () => { db.close(); dbPromise = null; };
+        db.onversionchange = () => { db.close(); dbPromises.delete(name); };
         resolve(db);
       };
       request.onerror = () => { rejected = true; reject(request.error || new Error('Unable to open local recovery storage.')); };
       request.onblocked = () => { rejected = true; reject(new Error('Local recovery storage is blocked by another window.')); };
     });
     // A transient open failure should not make every later retry fail forever.
-    dbPromise = pending.catch((error: unknown) => { dbPromise = null; throw error; });
+    dbPromise = pending.catch((error: unknown) => { dbPromises.delete(name); throw error; });
+    dbPromises.set(name, dbPromise);
   }
   return dbPromise;
 }
 
-export async function loadSession(): Promise<Session | null> {
-  const db = await database();
-  const stored = await new Promise<unknown>((resolve, reject) => {
-    const request = db.transaction('session', 'readonly').objectStore('session').get('current');
+async function readSessionRecord(db: IDBDatabase, key: 'current' | 'metadata-only'): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const request = db.transaction('session', 'readonly').objectStore('session').get(key);
     request.onsuccess = () => resolve(request.result ?? null);
     request.onerror = () => reject(request.error || new Error('Unable to read recovery data.'));
   });
+}
+
+/** Open the pre-rename database only if it already exists, so a fresh install does not create an empty copy. */
+async function openLegacyDatabase(): Promise<IDBDatabase | null> {
+  try {
+    const known = typeof indexedDB.databases === 'function' ? await indexedDB.databases() : null;
+    if (known && !known.some((info) => info.name === LEGACY_DB)) return null;
+  } catch {
+    // Enumeration is unavailable in some WebViews; fall through to a direct open.
+  }
+  return database(LEGACY_DB);
+}
+
+/** Prefer a current-brand snapshot; fall back to the pre-rename database only when empty. */
+export async function loadSession(): Promise<Session | null> {
+  const db = await database();
+  let stored = await readSessionRecord(db, 'current');
+  if (stored === null) {
+    const legacy = await openLegacyDatabase();
+    if (legacy) stored = await readSessionRecord(legacy, 'current');
+  }
   if (stored === null) return null;
   if (!isValidSession(stored)) throw new Error('The saved recovery session is invalid or from an unsupported version.');
   return stored;
@@ -190,11 +216,11 @@ export async function loadSession(): Promise<Session | null> {
 /** A metadata-only record means a newer snapshot could not preserve its text. */
 export async function hasPartialSessionMetadata(): Promise<boolean> {
   const db = await database();
-  return new Promise((resolve, reject) => {
-    const request = db.transaction('session', 'readonly').objectStore('session').get('metadata-only');
-    request.onsuccess = () => resolve(request.result != null);
-    request.onerror = () => reject(request.error || new Error('Unable to read recovery metadata.'));
-  });
+  if (await readSessionRecord(db, 'metadata-only') !== null) return true;
+  // A complete current-brand snapshot supersedes any older partial legacy metadata.
+  if (await readSessionRecord(db, 'current') !== null) return false;
+  const legacy = await openLegacyDatabase();
+  return legacy !== null && await readSessionRecord(legacy, 'metadata-only') !== null;
 }
 
 // A quota fallback keeps metadata separately; it is not a complete recovery copy.

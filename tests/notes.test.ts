@@ -45,7 +45,7 @@ describe('front matter', () => {
 describe('tags', () => {
   it('normalises case, hashes and trailing punctuation', () => {
     expect(normalizeTag('#Work')).toBe('work');
-    expect(normalizeTag('  #project/morrow!  ')).toBe('project/morrow');
+    expect(normalizeTag('  #project/wrytrove!  ')).toBe('project/wrytrove');
     expect(normalizeTag('##double')).toBe('double');
     expect(normalizeTag('#')).toBeNull();
     expect(normalizeTag('#has space')).toBeNull();
@@ -53,8 +53,8 @@ describe('tags', () => {
   });
 
   it('collects body tags plus the front-matter tags key once', () => {
-    const source = ['---', 'tags: [Work, ideas]', '---', '# Heading is not a tag', 'Body with #work and #Project/Morrow.', '```ts', '# code is not a tag', '```', 'Inline `#nope` code too.'].join('\n');
-    expect(collectTags(source).sort()).toEqual(['ideas', 'project/morrow', 'work']);
+    const source = ['---', 'tags: [Work, ideas]', '---', '# Heading is not a tag', 'Body with #work and #Project/Wrytrove.', '```ts', '# code is not a tag', '```', 'Inline `#nope` code too.'].join('\n');
+    expect(collectTags(source).sort()).toEqual(['ideas', 'project/wrytrove', 'work']);
   });
 
   it('skips heading lines so "# Title" never becomes a tag', () => {

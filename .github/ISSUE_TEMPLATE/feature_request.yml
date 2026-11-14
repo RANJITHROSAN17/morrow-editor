@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Morrow is deliberately small. "It should stay small" is a legitimate response, so describe
+        Wrytrove is deliberately small. "It should stay small" is a legitimate response, so describe
         the problem rather than only the feature — the smallest fix is often not the one proposed.
   - type: textarea
     id: problem
@@ -16,7 +16,7 @@ body:
   - type: textarea
     id: proposal
     attributes:
-      label: What would you like Morrow to do?
+      label: What would you like Wrytrove to do?
     validations:
       required: true
   - type: textarea

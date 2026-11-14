@@ -1,13 +1,13 @@
 [package]
-name = "morrow-editor"
+name = "wrytrove-editor"
 version = "0.4.0"
 description = "A small, local-first text and code editor"
-authors = ["Morrow contributors"]
+authors = ["Wrytrove contributors"]
 edition = "2021"
 license = "MIT"
 
 [lib]
-name = "morrow_editor_lib"
+name = "wrytrove_editor_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

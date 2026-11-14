@@ -2,7 +2,7 @@
  * minimap — a small document map beside the scrollbar.
  *
  * The point of a minimap is orientation, not detail: it shows where the dense and sparse parts
- * of a long note are and where the caret sits. Morrow draws density bars on a canvas instead of
+ * of a long note are and where the caret sits. Wrytrove draws density bars on a canvas instead of
  * a second rendered editor, which keeps it cheap and impossible to get out of sync with the
  * text. Above `MAX_MINIMAP_CHARS` it turns itself off and says so, rather than silently costing
  * typing latency.

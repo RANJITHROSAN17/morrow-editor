@@ -91,14 +91,14 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:MORROW_SIGNING_CERTIFICATE_PASSWORD)) { throw 'A signing certificate is configured but its password is missing.' }
           if ([string]::IsNullOrWhiteSpace($env:MORROW_SIGNING_CERTIFICATE_THUMBPRINT)) { throw 'A signing certificate is configured but its expected thumbprint is missing.' }
           $expectedThumbprint = ($env:MORROW_SIGNING_CERTIFICATE_THUMBPRINT -replace '\s', '').ToUpperInvariant()
-          $pfx = Join-Path $env:RUNNER_TEMP 'morrow-release-signing.pfx'
+          $pfx = Join-Path $env:RUNNER_TEMP 'wrytrove-release-signing.pfx'
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:MORROW_SIGNING_CERTIFICATE))
           $kits = ${env:ProgramFiles(x86)}
           $signtool = Get-ChildItem "$kits\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1
           if (-not $signtool) { throw 'Windows SDK signtool.exe was not found.' }
           $report = @()
           Get-ChildItem release -Filter '*-setup.exe' | ForEach-Object {
-            & $signtool.FullName sign /fd SHA256 /f $pfx /p $env:MORROW_SIGNING_CERTIFICATE_PASSWORD /tr $env:MORROW_TIMESTAMP_URL /td SHA256 /d 'Morrow' $_.FullName
+            & $signtool.FullName sign /fd SHA256 /f $pfx /p $env:MORROW_SIGNING_CERTIFICATE_PASSWORD /tr $env:MORROW_TIMESTAMP_URL /td SHA256 /d 'Wrytrove' $_.FullName
             if ($LASTEXITCODE -ne 0) { throw "signtool sign failed for $($_.Name)." }
             & $signtool.FullName verify /pa /all $_.FullName
             if ($LASTEXITCODE -ne 0) { throw "signtool verification failed for $($_.Name)." }
@@ -128,7 +128,7 @@ jobs:
           }
       - uses: actions/upload-artifact@v7
         with:
-          name: Morrow-windows-x64-release
+          name: Wrytrove-windows-x64-release
           path: release
           if-no-files-found: error
 
@@ -150,7 +150,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
-          name: Morrow-windows-x64-release
+          name: Wrytrove-windows-x64-release
           path: dist
       - uses: actions/setup-node@v7
         with:
@@ -172,10 +172,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p dist/attestations "$RUNNER_TEMP/morrow-attestations"
+          mkdir -p dist/attestations "$RUNNER_TEMP/wrytrove-attestations"
           for subject in dist/*-setup.exe dist/package-lock.json dist/Cargo.lock dist/npm-sbom.cdx.json dist/cargo-metadata.json; do
             name="${subject#dist/}"
-            subject_dir="$RUNNER_TEMP/morrow-attestations/$name"
+            subject_dir="$RUNNER_TEMP/wrytrove-attestations/$name"
             mkdir -p "$subject_dir"
             for attempt in 1 2 3 4 5; do
               rm -f "$subject_dir"/sha256*.jsonl
@@ -215,7 +215,7 @@ jobs:
 
           Without Node, Rust or a GitHub token, verify the attached provenance bundle with \`gh attestation verify $installer --repo $GITHUB_REPOSITORY --bundle attestations/$installer.intoto.jsonl\`. Follow [the release verification guide](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/RELEASE-VERIFICATION.md) for checksum and publisher checks.
 
-          Morrow has no automatic updater. To roll back, uninstall this preview from Windows Settings and install an earlier tagged release after verifying its own checksum and signing mode.
+          Wrytrove has no automatic updater. To roll back, uninstall this preview from Windows Settings and install an earlier tagged release after verifying its own checksum and signing mode.
           EOF
       - name: Publish
         uses: softprops/action-gh-release@v3

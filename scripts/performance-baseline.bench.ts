@@ -35,7 +35,7 @@ const reviewAfter = `${'line before\n'.repeat(2_500)}changed\n${'line after\n'.r
  * pass/fail thresholds yet: machine and WebView2 differences must be collected
  * before a regression budget is enforced in CI. Run with `npm run benchmark`.
  */
-test('Morrow pure workload baselines', async ({ bench }) => {
+test('Wrytrove pure workload baselines', async ({ bench }) => {
   const runs: Promise<unknown>[] = [];
   const register = (registration: { run: () => Promise<unknown> }) => runs.push(registration.run());
 

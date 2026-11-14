@@ -2,7 +2,7 @@
  * daily — quick capture, daily notes and templates.
  *
  * The "second brain" apps (Obsidian, Logseq, AnyType) all lead with the same three entry points:
- * capture a thought now, land in a dated note, start from a template. Morrow implements them as
+ * capture a thought now, land in a dated note, start from a template. Wrytrove implements them as
  * ordinary Markdown files inside a folder you picked, so nothing is locked in a database and the
  * whole feature works when the folder is a Dropbox or OneDrive directory.
  *

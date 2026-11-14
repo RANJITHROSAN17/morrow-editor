@@ -1,4 +1,6 @@
-# Morrow Editor validation report
+# Wrytrove Editor validation report
+
+> **Historical naming note:** product references in this snapshot now use Wrytrove. Audited commit hashes, workflow run IDs, branch names and repository URLs are preserved as evidence.
 
 **Date:** 13 November 2026 UTC  
 **Repository:** `RANJITHROSAN17/morrow-editor`  
@@ -27,7 +29,7 @@ This report is intentionally not a certification. A successful unit test, CI run
 
 | Area from the audit | What was done now | Status | What the result proves | Remaining work |
 |---|---|---|---|---|
-| Hands-on competitor benchmark | Added a protocol issue; ran Morrow-only pure benchmarks. | **Partial** | Morrow has reproducible starting measurements for selected pure functions. | Run paired Windows workloads against reference products under [#65](https://github.com/RANJITHROSAN17/morrow-editor/issues/65). |
+| Hands-on competitor benchmark | Added a protocol issue; ran Wrytrove-only pure benchmarks. | **Partial** | Wrytrove has reproducible starting measurements for selected pure functions. | Run paired Windows workloads against reference products under [#65](https://github.com/RANJITHROSAN17/morrow-editor/issues/65). |
 | Consumer Windows compatibility | Reviewed the workflow and checked the successful Windows x64 run. | **Partial** | The audited commit built, ran automated Windows E2E and Rust file-safety tests, and produced an installer/checksum. | Real Windows 10/11, WebView2, permissions, network shares, reparse points and upgrade/recovery matrix in [#66](https://github.com/RANJITHROSAN17/morrow-editor/issues/66). |
 | Real large-file performance | Benchmarked UTF-8 decode at 1/5/20 MiB and encode at 1/5 MiB. | **Partial** | Pure encoding cost and the current safety-boundary workload are measurable on this runner. | 100/500 MiB open/scroll/search/memory tests and an adaptive mode in [#51](https://github.com/RANJITHROSAN17/morrow-editor/issues/51), with paired measurement in [#65](https://github.com/RANJITHROSAN17/morrow-editor/issues/65). |
 | Power loss/interrupted save | Reviewed the save transaction and existing hash/atomic-write tests. | **Not run** | The current code has temp-file flush, expected hashes and no-clobber semantics in tested paths. | Termination/power interruption and recovery timeline tests in [#47](https://github.com/RANJITHROSAN17/morrow-editor/issues/47), [#49](https://github.com/RANJITHROSAN17/morrow-editor/issues/49), and the Windows matrix [#66](https://github.com/RANJITHROSAN17/morrow-editor/issues/66). |
@@ -91,7 +93,7 @@ Do not close an implementation issue because a plan exists. Close it only when i
 
 ### Validation backlog
 
-- [#65](https://github.com/RANJITHROSAN17/morrow-editor/issues/65) — hands-on competitor/Morrow benchmark matrix.
+- [#65](https://github.com/RANJITHROSAN17/morrow-editor/issues/65) — hands-on competitor/Wrytrove benchmark matrix.
 - [#66](https://github.com/RANJITHROSAN17/morrow-editor/issues/66) — consumer Windows reliability and filesystem matrix.
 - [#67](https://github.com/RANJITHROSAN17/morrow-editor/issues/67) — independent threat-model and penetration assessment.
 - [#68](https://github.com/RANJITHROSAN17/morrow-editor/issues/68) — real Ollama/Arena provider acceptance evaluation.

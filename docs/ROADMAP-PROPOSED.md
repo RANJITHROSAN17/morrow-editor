@@ -1,6 +1,6 @@
 # Pinch product roadmap proposal
 
-> **Scope note (4 November 2026):** This is a proposal for a different assistant product, **Pinch**, using Morrow's codebase as evidence. It is **not** Morrow's product roadmap. For the current competitive audit and Morrow upgrade plan, see [`COMPETITIVE-AUDIT-AND-ROADMAP-2026-11.md`](COMPETITIVE-AUDIT-AND-ROADMAP-2026-11.md).
+> **Scope note (4 November 2026):** This is a proposal for a different assistant product, **Pinch**, using Wrytrove's codebase as evidence. It is **not** Wrytrove's product roadmap. For the current competitive audit and Wrytrove upgrade plan, see [`COMPETITIVE-AUDIT-AND-ROADMAP-2026-11.md`](COMPETITIVE-AUDIT-AND-ROADMAP-2026-11.md).
 
 This proposal is grounded in the actual repository evidence for `RANJITHROSAN17/morrow-editor` as of 2026-11-02. The repo is a Windows-first local-editor product, not a Pinch assistant product yet, but it demonstrates the architectural patterns that are consistent with Pinch’s intended direction: local-first defaults, optional local AI, explicit approval for sensitive actions, strong file-safety guardrails, and honest documentation of limits.
 

@@ -62,8 +62,8 @@ function truncateWithoutSplittingPair(text: string, limit: number): string {
 function passageBoundary(text: string): { open: string; close: string } {
   let index = 0;
   for (;;) {
-    const open = `<<<MORROW_PASSAGE_${index}>>>`;
-    const close = `<<<END_MORROW_PASSAGE_${index}>>>`;
+    const open = `<<<WRYTROVE_PASSAGE_${index}>>>`;
+    const close = `<<<END_WRYTROVE_PASSAGE_${index}>>>`;
     if (!text.includes(open) && !text.includes(close)) return { open, close };
     index += 1;
   }

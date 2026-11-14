@@ -44,7 +44,7 @@ function versionFromTag(tag) {
 function verifyTag(tag) {
   const version = packageVersion();
   if (versionFromTag(tag) !== version) fail(`Tag ${tag} does not match the source version ${version}.`);
-  console.log(`Release tag ${tag} matches Morrow ${version}.`);
+  console.log(`Release tag ${tag} matches Wrytrove ${version}.`);
   return version;
 }
 
@@ -194,7 +194,7 @@ function writeManifest(directory, tag, commit) {
   if (!['signed', 'unsigned-preview'].includes(signingMode)) fail(`Invalid signing mode: ${signingMode}.`);
   const manifest = {
     schemaVersion: 1,
-    product: 'Morrow',
+    product: 'Wrytrove',
     version,
     tag,
     commit,
@@ -207,7 +207,7 @@ function writeManifest(directory, tag, commit) {
   writeFileSync(join(out, 'RELEASE-MANIFEST.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   const markdownTick = '`';
   const lines = [
-    '# Morrow release provenance',
+    '# Wrytrove release provenance',
     '',
     `- Version: ${markdownTick}${version}${markdownTick}`,
     `- Tag: ${markdownTick}${tag}${markdownTick}`,
@@ -243,35 +243,35 @@ function writeWinget(directory, tag) {
   const manifestDirectory = join(out, 'winget');
   ensureDirectory(manifestDirectory);
   const common = [
-    'PackageIdentifier: RANJITHROSAN17.Morrow',
+    'PackageIdentifier: RANJITHROSAN17.Wrytrove',
     `PackageVersion: ${version}`,
   ];
-  writeFileSync(join(manifestDirectory, 'RANJITHROSAN17.Morrow.yaml'), `${[
+  writeFileSync(join(manifestDirectory, 'RANJITHROSAN17.Wrytrove.yaml'), `${[
     ...common,
     'PackageLocale: en-US',
     'Publisher: RANJITHROSAN17',
     'PublisherUrl: https://github.com/RANJITHROSAN17',
-    'PackageName: Morrow',
+    'PackageName: Wrytrove',
     'PackageUrl: https://github.com/RANJITHROSAN17/morrow-editor',
     'License: MIT',
     'ShortDescription: A small local-first text and code editor for Windows.',
     'ManifestType: defaultLocale',
     'ManifestVersion: 1.6.0',
   ].join('\n')}\n`);
-  writeFileSync(join(manifestDirectory, 'RANJITHROSAN17.Morrow.locale.en-US.yaml'), `${[
+  writeFileSync(join(manifestDirectory, 'RANJITHROSAN17.Wrytrove.locale.en-US.yaml'), `${[
     ...common,
     'PackageLocale: en-US',
     'Publisher: RANJITHROSAN17',
     'PublisherUrl: https://github.com/RANJITHROSAN17',
-    'PackageName: Morrow',
+    'PackageName: Wrytrove',
     'PackageUrl: https://github.com/RANJITHROSAN17/morrow-editor',
     'License: MIT',
     'ShortDescription: A small local-first text and code editor for Windows.',
-    'Description: Morrow is a local-first text and code editor for notes and quick programming tasks.',
+    'Description: Wrytrove is a local-first text and code editor for notes and quick programming tasks.',
     'ManifestType: locale',
     'ManifestVersion: 1.6.0',
   ].join('\n')}\n`);
-  writeFileSync(join(manifestDirectory, 'RANJITHROSAN17.Morrow.installer.yaml'), `${[
+  writeFileSync(join(manifestDirectory, 'RANJITHROSAN17.Wrytrove.installer.yaml'), `${[
     ...common,
     'Installers:',
     '- Architecture: x64',
@@ -311,7 +311,7 @@ function verifyRelease(directory, tag, commit) {
   if (!existsSync(join(out, 'PROVENANCE.md')) || !existsSync(join(out, 'npm-sbom.cdx.json')) || !existsSync(join(out, 'cargo-metadata.json')) || !existsSync(join(out, 'SIGNATURE-VERIFICATION.txt'))) {
     fail('The release is missing a provenance, SBOM or signature asset.');
   }
-  const wingetPath = join(out, 'winget', 'RANJITHROSAN17.Morrow.installer.yaml');
+  const wingetPath = join(out, 'winget', 'RANJITHROSAN17.Wrytrove.installer.yaml');
   if (!existsSync(wingetPath)) fail('The release-specific winget installer manifest is missing.');
   const winget = readFileSync(wingetPath, 'utf8');
   const expectedUrl = `releases/download/${tag}/${encodeURIComponent(installers[0])}`;

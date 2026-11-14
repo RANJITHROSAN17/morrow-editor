@@ -1,4 +1,4 @@
-/** Lossless text decoding for the encodings Morrow can safely write back. */
+/** Lossless text decoding for the encodings Wrytrove can safely write back. */
 export type TextEncoding = 'UTF-8' | 'UTF-8 BOM' | 'UTF-16 LE' | 'UTF-16 BE';
 export type LineEnding = 'LF' | 'CRLF' | 'CR';
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;

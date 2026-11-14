@@ -1,6 +1,6 @@
-# Verifying a Morrow Windows release
+# Verifying a Wrytrove Windows release
 
-Morrow does not silently update itself. A tagged preview is a set of inspectable files: the NSIS installer, a SHA-256 file, dependency inventories, a release manifest, a release-specific winget manifest and a GitHub artifact provenance attestation.
+Wrytrove does not silently update itself. A tagged preview is a set of inspectable files: the NSIS installer, a SHA-256 file, dependency inventories, a release manifest, a release-specific winget manifest and a GitHub artifact provenance attestation.
 
 The release workflow has two permissions boundaries:
 
@@ -34,7 +34,7 @@ Open `SIGNING-MODE.txt` first.
 - `signed` means the Windows build verified an Authenticode signature and timestamp before publishing. Run:
 
   ```powershell
-  Get-AuthenticodeSignature .\Morrow_*setup.exe | Format-List Status,SignerCertificate,TimeStamperCertificate
+  Get-AuthenticodeSignature .\Wrytrove_*setup.exe | Format-List Status,SignerCertificate,TimeStamperCertificate
   ```
 
   On a clean consumer Windows VM, the status must be `Valid`, `SignerCertificate` must be the expected publisher, and `TimeStamperCertificate` must be present. Compare the signer thumbprint with the public `SIGNATURE-VERIFICATION.txt` report; the report is evidence of what the build verified, while the VM check confirms the installed trust chain.
@@ -43,6 +43,8 @@ Open `SIGNING-MODE.txt` first.
 
 Signing is fail-closed when the repository's `MORROW_SIGNING_REQUIRED` variable is `true`. When a certificate is configured, the repository must also provide `MORROW_SIGNING_CERTIFICATE_THUMBPRINT`; the build compares the embedded signer thumbprint with that expected identity, verifies the Authenticode chain and requires a trusted timestamp. A missing or invalid certificate fails the tagged build rather than producing a misleading signed label. The thumbprint and expected publisher should be recorded in the repository's protected release configuration, never guessed from the installer.
 
+The repository secret and variable names keep the `MORROW_` prefix. They are existing repository settings, and renaming them would require reconfiguring the repository before the next tagged build.
+
 Maintainers configure `MORROW_SIGNING_CERTIFICATE` as a base64-encoded PFX secret, `MORROW_SIGNING_CERTIFICATE_PASSWORD` as a protected secret, and `MORROW_SIGNING_CERTIFICATE_THUMBPRINT` as a repository variable. `MORROW_TIMESTAMP_URL` may select an approved RFC 3161 service; `MORROW_SIGNING_REQUIRED=true` makes a certificate mandatory for tagged releases.
 
 ## Check build provenance
@@ -50,9 +52,9 @@ Maintainers configure `MORROW_SIGNING_CERTIFICATE` as a base64-encoded PFX secre
 GitHub stores an artifact attestation for the installer, both lockfiles and the generated SBOM inputs. The release also includes an `attestations/` bundle for each subject, so provenance can be checked offline after downloading the bundle. With a GitHub CLI version that supports artifact attestations:
 
 ```bash
-gh attestation verify Morrow_0.4.0_x64-setup.exe \
+gh attestation verify Wrytrove_0.4.0_x64-setup.exe \
   --repo RANJITHROSAN17/morrow-editor \
-  --bundle attestations/Morrow_0.4.0_x64-setup.exe.intoto.jsonl
+  --bundle attestations/Wrytrove_0.4.0_x64-setup.exe.intoto.jsonl
 ```
 
 The `--bundle` form needs no GitHub token and checks the signed SLSA provenance statement locally. Repeat it for `package-lock.json`, `Cargo.lock`, `npm-sbom.cdx.json` and `cargo-metadata.json` when auditing those subjects. The attached `RELEASE-MANIFEST.json` records the exact source commit, tag, signing mode and SHA-256 values. `PROVENANCE.md` repeats the same information in a human-readable form.
@@ -79,4 +81,4 @@ WinGet still applies its own publisher and package policies. This local manifest
 
 ## Rollback and reinstall
 
-There is no automatic updater or forced migration. To roll back, save or back up your work, uninstall Morrow from **Windows Settings → Apps**, download an earlier tagged release, verify its checksum and signing mode, and install it. Morrow stores user files separately from the application; keep a copy of important files before any reinstall.
+There is no automatic updater or forced migration. To roll back, save or back up your work, uninstall Wrytrove from **Windows Settings → Apps**, download an earlier tagged release, verify its checksum and signing mode, and install it. Wrytrove stores user files separately from the application; keep a copy of important files before any reinstall.

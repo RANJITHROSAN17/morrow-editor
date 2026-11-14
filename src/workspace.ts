@@ -83,7 +83,7 @@ export function rankWorkspaceFiles<T extends QuickOpenPath>(files: readonly T[],
 
 export async function pickWorkspace(): Promise<WorkspaceDirectory | null> {
   if (desktop) {
-    const selected = await open({ directory: true, recursive: true, multiple: false, title: 'Open a folder in Morrow' });
+    const selected = await open({ directory: true, recursive: true, multiple: false, title: 'Open a folder in Wrytrove' });
     if (!selected || Array.isArray(selected)) return null;
     const info = await lstat(selected);
     if (info.isSymlink || !info.isDirectory) throw new Error('Select a real folder rather than a symbolic link or junction.');
