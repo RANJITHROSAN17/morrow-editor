@@ -1,0 +1,11 @@
+{
+  "machine": "REPLACE-ME: a short label for this PC, e.g. typical-laptop-16GB-ssd",
+  "trials": 5,
+  "products": [
+    { "id": "wrytrove", "name": "Wrytrove", "exe": null, "args": ["{file}"] },
+    { "id": "notepadpp", "name": "Notepad++", "exe": null, "args": ["{file}"] },
+    { "id": "notepads", "name": "Notepads", "exe": null, "args": ["{file}"] },
+    { "id": "vscode", "name": "VS Code", "exe": null, "args": ["--new-window", "{file}"] },
+    { "id": "zed", "name": "Zed", "exe": null, "args": ["{file}"] }
+  ]
+}
