@@ -79,6 +79,10 @@ jobs:
           $hasThumbprint = -not [string]::IsNullOrWhiteSpace($env:MORROW_SIGNING_CERTIFICATE_THUMBPRINT)
           if (($env:MORROW_SIGNING_REQUIRED -eq 'true' -or $hasThumbprint) -and -not $hasCertificate) { throw 'Tagged release signing is configured or required, but MORROW_SIGNING_CERTIFICATE is not available.' }
           if ($hasCertificate) { 'configured=true' | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT } else { 'configured=false' | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT }
+      # NOTE: this step signs with an exported PFX. CA/Browser Forum rules since June 2023 require
+      # code-signing keys to stay in certified hardware or a cloud signing service, so a newly issued
+      # certificate cannot be exported to this PFX form. Replace this step with the chosen signing route
+      # (see docs/RELEASE-VERIFICATION.md) before the first signed tag.
       - name: Sign and verify the tagged installer
         if: ${{ startsWith(github.ref, 'refs/tags/v') && steps.signing_mode.outputs.configured == 'true' }}
         shell: pwsh
@@ -126,6 +130,36 @@ jobs:
             node scripts/release.mjs winget release $env:GITHUB_REF_NAME
             node scripts/release.mjs manifest release $env:GITHUB_REF_NAME $env:GITHUB_SHA
           }
+      # MSIX for Microsoft Store submission. Runs only when the Partner Center identity values are
+      # configured. Output goes to msix-out/ and is uploaded as its own artifact, never into the
+      # release folder, so the tag-only publish job cannot publish it. Unverified until a Windows run
+      # has produced a package that passes Store validation.
+      - name: Build MSIX for Store submission
+        if: ${{ vars.MORROW_MSIX_IDENTITY_NAME != '' }}
+        shell: pwsh
+        env:
+          MORROW_MSIX_IDENTITY_NAME: ${{ vars.MORROW_MSIX_IDENTITY_NAME }}
+          MORROW_MSIX_PUBLISHER: ${{ vars.MORROW_MSIX_PUBLISHER }}
+          MORROW_MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MORROW_MSIX_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/msix.mjs check
+          $kits = ${env:ProgramFiles(x86)}
+          $makeappx = Get-ChildItem "$kits\Windows Kits\10\bin\*\x64\makeappx.exe" -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1
+          if (-not $makeappx) { throw 'Windows SDK makeappx.exe was not found.' }
+          $layout = Join-Path $env:RUNNER_TEMP 'wrytrove-msix-layout'
+          if (Test-Path $layout) { Remove-Item -Recurse -Force $layout }
+          node scripts/msix.mjs layout src-tauri/target/x86_64-pc-windows-msvc/release/wrytrove-editor.exe src-tauri/icons/msix $layout
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          New-Item -ItemType Directory -Force msix-out | Out-Null
+          & $makeappx.FullName pack /d $layout /p "msix-out/Wrytrove_$version.0_x64.msix" /o
+          if ($LASTEXITCODE -ne 0) { throw 'makeappx pack failed.' }
+      - uses: actions/upload-artifact@v7
+        if: ${{ vars.MORROW_MSIX_IDENTITY_NAME != '' }}
+        with:
+          name: Wrytrove-msix-unpublished
+          path: msix-out
+          if-no-files-found: error
       - uses: actions/upload-artifact@v7
         with:
           name: Wrytrove-windows-x64-release

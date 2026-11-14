@@ -39,4 +39,9 @@ image.save(ROOT / 'icon.png')
 for n in (32, 128):
     image.resize((n, n), Image.Resampling.LANCZOS).save(ROOT / f'{n}x{n}.png')
 image.save(ROOT / 'icon.ico', format='ICO', sizes=[(n, n) for n in (16, 24, 32, 48, 64, 128, 256)])
-print('wrote', ROOT)
+# MSIX logos for Microsoft Store packaging (scripts/msix.mjs expects these exact names).
+MSIX = ROOT / 'msix'
+MSIX.mkdir(exist_ok=True)
+for name, n in (('Square44x44Logo.png', 44), ('Square150x150Logo.png', 150), ('StoreLogo.png', 50)):
+    image.resize((n, n), Image.Resampling.LANCZOS).save(MSIX / name)
+print('wrote', ROOT, 'and', MSIX)
