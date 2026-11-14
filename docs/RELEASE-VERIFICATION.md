@@ -45,7 +45,9 @@ Signing is fail-closed when the repository's `MORROW_SIGNING_REQUIRED` variable 
 
 The repository secret and variable names keep the `MORROW_` prefix. They are existing repository settings, and renaming them would require reconfiguring the repository before the next tagged build.
 
-Maintainers configure `MORROW_SIGNING_CERTIFICATE` as a base64-encoded PFX secret, `MORROW_SIGNING_CERTIFICATE_PASSWORD` as a protected secret, and `MORROW_SIGNING_CERTIFICATE_THUMBPRINT` as a repository variable. `MORROW_TIMESTAMP_URL` may select an approved RFC 3161 service; `MORROW_SIGNING_REQUIRED=true` makes a certificate mandatory for tagged releases.
+**Important: the current signing step does not match how certificates are issued today.** Since June 2023 the CA/Browser Forum requires code-signing private keys to be generated and stored in certified hardware (FIPS 140-2 Level 2 or Common Criteria EAL 4+) or in a compliant cloud signing service, and the key must be non-exportable. Certificate authorities therefore no longer issue a downloadable `.pfx` for code signing. The workflow's `signtool sign /f <pfx>` step, and the base64 `MORROW_SIGNING_CERTIFICATE` secret it reads, only work with an exportable certificate. Before the first signed tag, the signing step must be changed to the route you choose: cloud signing with the provider's client, or a USB token attached to a self-hosted Windows runner. Until that change is merged, a tagged build with `MORROW_SIGNING_REQUIRED=true` will fail, and without it the release is published as `unsigned-preview`.
+
+For the route that is currently implemented, maintainers configure `MORROW_SIGNING_CERTIFICATE` as a base64-encoded PFX secret, `MORROW_SIGNING_CERTIFICATE_PASSWORD` as a protected secret, and `MORROW_SIGNING_CERTIFICATE_THUMBPRINT` as a repository variable. `MORROW_TIMESTAMP_URL` may select an approved RFC 3161 service; `MORROW_SIGNING_REQUIRED=true` makes a certificate mandatory for tagged releases.
 
 ## Check build provenance
 
