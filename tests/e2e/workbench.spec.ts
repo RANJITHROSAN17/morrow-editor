@@ -241,6 +241,7 @@ test('a failed recent-path opt-out is visible and can be cleared after storage r
     };
   });
   await page.goto('/');
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('switch', { name: 'Remember recent files' })).toHaveAttribute('aria-checked', 'true');
   await page.evaluate(() => { (window as Window & { __failPreferences?: boolean }).__failPreferences = true; });

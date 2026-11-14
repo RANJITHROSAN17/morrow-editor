@@ -24,6 +24,7 @@ test('visible quick-open affordance is keyboard operable', async ({ page }) => {
 
 test('primary controls and light-theme tab icons remain legible', async ({ page }) => {
   await page.goto('/');
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   for (const theme of ['dark', 'light']) {
     if (theme === 'light') {
       await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -51,6 +52,7 @@ test('primary controls and light-theme tab icons remain legible', async ({ page 
 test('compact header keeps the brand and menus separate', async ({ page }) => {
   await page.setViewportSize({ width: 704, height: 500 });
   await page.goto('/');
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   const brand = await page.locator('.brand-name').boundingBox();
   const file = await page.getByRole('button', { name: 'File', exact: true }).boundingBox();
   expect(brand).not.toBeNull(); expect(file).not.toBeNull();
