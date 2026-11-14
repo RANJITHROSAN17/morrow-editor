@@ -162,7 +162,13 @@ npm run benchmark:json
 npm run benchmark:table
 ```
 
-`npm run benchmark` gives the interactive Vitest output. Head-to-head comparisons with other editors, and startup, memory and typing-latency measurements, are not done yet; they are tracked in [issue #65](https://github.com/RANJITHROSAN17/morrow-editor/issues/65). Until they are, Wrytrove makes no speed or memory advantage claim.
+`npm run benchmark` gives the interactive Vitest output.
+
+### Comparison with other editors
+
+[**docs/BENCHMARK-COMPARISON.md**](docs/BENCHMARK-COMPARISON.md) compares Wrytrove's editor engine (CodeMirror 6) with Monaco and Ace on identical synthetic files, as percentages. Run `npm --prefix benchmarks/engines ci` once, then `npm run benchmark:engines` and `npm run benchmark:compare`.
+
+Comparison with the desktop apps (Notepad++, Notepads, VS Code, Zed) has to run on Windows with those apps installed. Use `npm run benchmark:products` after copying `benchmarks/product/products.example.json`. That harness is written but has not yet been run on Windows. Until those results are published, Wrytrove makes no speed or memory advantage claim against any product. Startup, memory and typing-latency claims stay under [issue #65](https://github.com/RANJITHROSAN17/morrow-editor/issues/65).
 
 ## Development and testing
 

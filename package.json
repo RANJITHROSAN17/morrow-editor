@@ -13,6 +13,9 @@
     "benchmark": "vitest bench scripts/performance-baseline.bench.ts",
     "benchmark:json": "vitest bench scripts/performance-baseline.bench.ts --run --reporter=json --outputFile=benchmark-results.json",
     "benchmark:table": "node scripts/benchmark-table.mjs benchmark-results.json",
+    "benchmark:engines": "npm --prefix benchmarks/engines run build && node benchmarks/engines/run.mjs",
+    "benchmark:products": "node benchmarks/product/run.mjs",
+    "benchmark:compare": "node benchmarks/compare.mjs",
     "audit:static": "node scripts/security-audit.mjs",
     "tauri": "tauri"
   },
