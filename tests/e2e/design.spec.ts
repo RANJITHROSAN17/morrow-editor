@@ -12,6 +12,8 @@ const ratio = (foreground: string, background: string) => {
 
 test('visible quick-open affordance is keyboard operable', async ({ page }) => {
   await page.goto('/');
+  // Keys pressed while startup recovery holds #app inert are ignored; wait for the editor to be ready.
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
   const quick = page.getByRole('button', { name: 'Quick open files' });
   await quick.focus(); await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog', { name: 'Quick open' })).toBeVisible();

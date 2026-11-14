@@ -297,6 +297,17 @@ describe('pre-rename recovery compatibility', () => {
     expect(stores.get(LEGACY_DB)!.get('current')).toEqual(session);
   });
 
+  it('does not create the legacy database on a fresh install', async () => {
+    const { stores, opened } = stubRecoveryDatabases({});
+    (indexedDB as unknown as { databases(): Promise<{ name: string }[]> }).databases = async () => [...stores.keys()].map((name) => ({ name }));
+    vi.resetModules();
+    const { loadSession, hasPartialSessionMetadata } = await import('../src/storage');
+    expect(await loadSession()).toBeNull();
+    expect(await hasPartialSessionMetadata()).toBe(false);
+    expect(opened).not.toContain(LEGACY_DB);
+    expect(stores.has(LEGACY_DB)).toBe(false);
+  });
+
   it('prefers a current-brand snapshot over legacy data', async () => {
     const current = { ...session, documents: [{ ...session.documents[0], text: 'current draft' }] };
     const { stores } = stubRecoveryDatabases({ 'wrytrove-local-session-v1': { current }, [LEGACY_DB]: { current: session } });

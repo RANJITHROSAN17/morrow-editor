@@ -189,13 +189,24 @@ async function readSessionRecord(db: IDBDatabase, key: 'current' | 'metadata-onl
   });
 }
 
+/** Open the pre-rename database only if it already exists, so a fresh install does not create an empty copy. */
+async function openLegacyDatabase(): Promise<IDBDatabase | null> {
+  try {
+    const known = typeof indexedDB.databases === 'function' ? await indexedDB.databases() : null;
+    if (known && !known.some((info) => info.name === LEGACY_DB)) return null;
+  } catch {
+    // Enumeration is unavailable in some WebViews; fall through to a direct open.
+  }
+  return database(LEGACY_DB);
+}
+
 /** Prefer a current-brand snapshot; fall back to the pre-rename database only when empty. */
 export async function loadSession(): Promise<Session | null> {
   const db = await database();
   let stored = await readSessionRecord(db, 'current');
   if (stored === null) {
-    const legacy = await database(LEGACY_DB);
-    stored = await readSessionRecord(legacy, 'current');
+    const legacy = await openLegacyDatabase();
+    if (legacy) stored = await readSessionRecord(legacy, 'current');
   }
   if (stored === null) return null;
   if (!isValidSession(stored)) throw new Error('The saved recovery session is invalid or from an unsupported version.');
@@ -208,8 +219,8 @@ export async function hasPartialSessionMetadata(): Promise<boolean> {
   if (await readSessionRecord(db, 'metadata-only') !== null) return true;
   // A complete current-brand snapshot supersedes any older partial legacy metadata.
   if (await readSessionRecord(db, 'current') !== null) return false;
-  const legacy = await database(LEGACY_DB);
-  return await readSessionRecord(legacy, 'metadata-only') !== null;
+  const legacy = await openLegacyDatabase();
+  return legacy !== null && await readSessionRecord(legacy, 'metadata-only') !== null;
 }
 
 // A quota fallback keeps metadata separately; it is not a complete recovery copy.
