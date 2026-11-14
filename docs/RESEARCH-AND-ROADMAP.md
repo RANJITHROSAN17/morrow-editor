@@ -1,6 +1,8 @@
-# Morrow: competitive research and release plan
+# Wrytrove: competitive research and release plan
 
-Research date: **30 October 2026**. Morrow is a working name, not a cleared trademark. This document separates observed facts from product hypotheses and proposed targets.
+> **Historical naming note:** product references in this snapshot now use Wrytrove. Original repository URLs, branch names, commit IDs and released artifact filenames are preserved as evidence.
+
+Research date: **30 October 2026**. Wrytrove is a working name, not a cleared trademark. This document separates observed facts from product hypotheses and proposed targets.
 
 ## The opportunity
 
@@ -15,11 +17,11 @@ The key is progressive disclosure: a normal note should not require understandin
 
 ## Competitive landscape
 
-| Product | What users already get | Implication for Morrow |
+| Product | What users already get | Implication for Wrytrove |
 |---|---|---|
 | Windows Notepad | Recent Windows 11 Notepad has tabs and can restore open tabs and unsaved edits; those are table stakes, not differentiators. [1](https://blogs.windows.com/windows-insider/2023/08/31/new-updates-for-snipping-tool-and-notepad-for-windows-insiders/) Microsoft also announced subscription-free local writing tools on supported Copilot+ PCs. [3](https://blogs.windows.com/windowsexperience/2025/10/16/new-experiences-currently-rolling-out-for-windows-11/) | Match ease and session trust. Differentiate on source-code highlighting, open governance, and optional code-oriented completion—not “Notepad has no tabs or AI.” |
-| Notepad++ | A mature, open-source Windows editor built on Scintilla. Its manual describes around 80 languages, syntax folding and tabs, and a much broader feature set including plugins and macros. [2](https://npp-user-manual.org/docs/getting-started/) Its session snapshot/backup behavior is established. [2](https://community.notepad-plus-plus.org/topic/21782/faq-desk-periodic-backup-vs-autosave-plugin/) | It is the serious incumbent, not a weak baseline. Earn trust through file fidelity and performance; prioritize large-file support, find-in-files and operational maturity before calling Morrow a replacement. |
-| Visual Studio Code | Supports hundreds of languages and richer code understanding, debugging and extensions. [3](https://code.visualstudio.com/docs/editor/whyvscode) Its Copilot Free plan has a monthly allowance for inline suggestions; some capabilities require the Copilot service. [1](https://code.visualstudio.com/docs/setup/copilot) | Don't pretend Morrow is a complete IDE. Aim for the short single-file task with a smaller conceptual footprint and an optional local-model path; measure actual startup and memory instead of assuming an advantage. |
+| Notepad++ | A mature, open-source Windows editor built on Scintilla. Its manual describes around 80 languages, syntax folding and tabs, and a much broader feature set including plugins and macros. [2](https://npp-user-manual.org/docs/getting-started/) Its session snapshot/backup behavior is established. [2](https://community.notepad-plus-plus.org/topic/21782/faq-desk-periodic-backup-vs-autosave-plugin/) | It is the serious incumbent, not a weak baseline. Earn trust through file fidelity and performance; prioritize large-file support, find-in-files and operational maturity before calling Wrytrove a replacement. |
+| Visual Studio Code | Supports hundreds of languages and richer code understanding, debugging and extensions. [3](https://code.visualstudio.com/docs/editor/whyvscode) Its Copilot Free plan has a monthly allowance for inline suggestions; some capabilities require the Copilot service. [1](https://code.visualstudio.com/docs/setup/copilot) | Don't pretend Wrytrove is a complete IDE. Aim for the short single-file task with a smaller conceptual footprint and an optional local-model path; measure actual startup and memory instead of assuming an advantage. |
 
 There are also many capable smaller editors. This is directional research, not an exhaustive competitor survey, and no head-to-head benchmarks have been run. Before naming, launch or public claims, review current product versions, licenses, pricing, trademarks and relevant platform policies again.
 

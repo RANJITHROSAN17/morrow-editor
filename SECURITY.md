@@ -8,7 +8,7 @@
 Include what you did, what happened, and the version (`package.json`) plus your Windows build.
 A proof of concept helps; a screenshot is enough to start.
 
-Expect an acknowledgement within **72 hours**. Morrow is a single-maintainer preview project
+Expect an acknowledgement within **72 hours**. Wrytrove is a single-maintainer preview project
 with no security team and no bug bounty — that is stated plainly so nobody waits for a reward
 that does not exist.
 

@@ -1,6 +1,6 @@
-# Contributing to Morrow
+# Contributing to Wrytrove
 
-Morrow is a Windows desktop editor built on Tauri 2, but **most of it is platform-neutral
+Wrytrove is a Windows desktop editor built on Tauri 2, but **most of it is platform-neutral
 TypeScript, and all of that is testable on Linux and macOS.** You do not need Windows, Rust,
 MSVC Build Tools or WebView2 to make a meaningful contribution.
 
@@ -29,7 +29,7 @@ you can do it on any OS.
 ## Your first PR
 
 Your workflows will show **"awaiting approval"** on your first pull request. That is normal:
-GitHub holds CI runs from first-time contributors until a maintainer approves them, and Morrow
+GitHub holds CI runs from first-time contributors until a maintainer approves them, and Wrytrove
 keeps that gate on because the Windows job builds an installer artifact. Approve-by-hand is the
 price of not handing fork PRs a writable token.
 

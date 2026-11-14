@@ -37,5 +37,5 @@ See `src-tauri/Cargo.lock` and the source of each crate for the complete resolve
 
 - The suggested [`qwen2.5-coder:1.5b` model](https://ollama.com/library/qwen2.5-coder:1.5b) is not included in the app or source archive; its Ollama model page lists Apache License 2.0. Check model provenance, the current model license and any other applicable terms before use or redistribution.
 - [Ollama](https://github.com/ollama/ollama) is installed separately, with its own license and terms.
-- The app uses Microsoft's WebView2 runtime on Windows. The runtime/installer is obtained separately and is subject to Microsoft's terms; it is not covered by Morrow's MIT license.
+- The app uses Microsoft's WebView2 runtime on Windows. The runtime/installer is obtained separately and is subject to Microsoft's terms; it is not covered by Wrytrove's MIT license.
 - Windows installation tooling and any installer bootstrapper have their own terms. This prototype's unsigned installer workflow has not yet been audited for redistribution.

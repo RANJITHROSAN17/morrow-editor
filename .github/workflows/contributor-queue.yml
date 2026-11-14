@@ -110,6 +110,7 @@ jobs:
             while IFS=$'\t' read -r ID RELEASE_TAG; do
               [ -n "$ID" ] || continue
               MARKER="<!-- roadmap:${ID} -->"
+              LEGACY_MARKER="<!-- roadmap:${ID/#wrytrove-/morrow-} -->"
               while read -r NUM; do
                 [ -n "$NUM" ] || continue
                 AUTHOR="$(jq -r --argjson n "$NUM" '.[] | select(.number == $n) | .author.login' /tmp/open2.json)"
@@ -124,7 +125,7 @@ jobs:
                 gh issue comment "$NUM" --body "Shipped in ${RELEASE_TAG}. Thanks for contributing — credit is in the release notes."
                 gh issue close "$NUM" --reason completed
                 echo "closed #$NUM (${ID})" >> "$GITHUB_STEP_SUMMARY"
-              done < <(jq -r --arg m "$MARKER" '.[] | select((.body // "") | contains($m)) | .number' /tmp/open2.json)
+              done < <(jq -r --arg m "$MARKER" --arg legacy "$LEGACY_MARKER" '.[] | select((.body // "") | (contains($m) or contains($legacy))) | .number' /tmp/open2.json)
             done < /tmp/shipped.txt
           fi
 
@@ -143,7 +144,7 @@ jobs:
               | select(.difficulty == "easy")
               | .id as $id
               | select(
-                  ([$open[0][] | select((.body // "") | contains("<!-- roadmap:" + $id + " -->"))] | length) > 0
+                  ([$open[0][] | select((.body // "") | (contains("<!-- roadmap:" + $id + " -->") or contains("<!-- roadmap:" + ($id | sub("^wrytrove-"; "morrow-")) + " -->")))] | length) > 0
                 )
               | $id
             ] | length' .github/roadmap.json)"
@@ -178,7 +179,8 @@ jobs:
               and ((.verify // "") | length > 0);
             def unseen:
               (.id | "<!-- roadmap:" + . + " -->") as $m
-              | ([$seen[0][] | select((.body // "") | contains($m))] | length) == 0;
+              | (.id | sub("^wrytrove-"; "morrow-") | "<!-- roadmap:" + . + " -->") as $legacy
+              | ([$seen[0][] | select((.body // "") | (contains($m) or contains($legacy)))] | length) == 0;
             # A theme is still being worked on while any curated issue carrying its marker is open.
             def theme_busy($theme):
               ([$open[0][] | select((.body // "") | contains("<!-- theme:" + $theme + " -->"))] | length) > 0;

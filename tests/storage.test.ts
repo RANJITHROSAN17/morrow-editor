@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { defaults, isValidSession, loadSettings, saveSettings, SETTINGS_KEY } from '../src/storage';
+import { defaults, isValidSession, loadSettings, saveSettings, SETTINGS_KEY, LEGACY_SETTINGS_KEY, LEGACY_DB } from '../src/storage';
 import { DEFAULT_DAILY_TEMPLATE } from '../src/daily';
 
 function memoryStorage(initial: Record<string, string> = {}): Storage {
@@ -106,6 +106,40 @@ describe('settings persistence and session-only AI consent', () => {
   });
 });
 
+describe('pre-rename settings compatibility', () => {
+  it('reads legacy settings when no current-brand settings exist', () => {
+    localStorage.setItem(LEGACY_SETTINGS_KEY, JSON.stringify({ theme: 'light', recovery: false, wrap: true, aiEnabled: true }));
+    const result = loadSettings();
+    expect(result.readFailed).toBe(false);
+    expect(result.settings).toMatchObject({ theme: 'light', recovery: false, wrap: true, aiEnabled: false });
+  });
+
+  it('prefers current-brand settings over a stale legacy copy', () => {
+    localStorage.setItem(LEGACY_SETTINGS_KEY, JSON.stringify({ theme: 'light', recovery: false }));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ theme: 'dark', recovery: true }));
+    expect(loadSettings().settings).toMatchObject({ theme: 'dark', recovery: true });
+  });
+
+  it('does not fall back to legacy settings when the current key is corrupt', () => {
+    localStorage.setItem(LEGACY_SETTINGS_KEY, JSON.stringify({ recovery: true }));
+    localStorage.setItem(SETTINGS_KEY, '{broken');
+    expect(loadSettings()).toMatchObject({ readFailed: true, settings: { recovery: false } });
+  });
+
+  it('treats corrupt legacy settings as a read failure rather than silently enabling recovery', () => {
+    localStorage.setItem(LEGACY_SETTINGS_KEY, '{broken');
+    expect(loadSettings()).toMatchObject({ readFailed: true, settings: { recovery: false, aiEnabled: false } });
+  });
+
+  it('writes new settings under the current key and leaves the legacy copy untouched on read', () => {
+    localStorage.setItem(LEGACY_SETTINGS_KEY, JSON.stringify({ theme: 'light' }));
+    expect(saveSettings({ ...defaults, theme: 'dark' })).toBe(true);
+    expect(localStorage.getItem(SETTINGS_KEY)).not.toBeNull();
+    expect(localStorage.getItem(LEGACY_SETTINGS_KEY)).toBe(JSON.stringify({ theme: 'light' }));
+    expect(loadSettings().settings.theme).toBe('dark');
+  });
+});
+
 describe('recovery snapshot validation', () => {
   const document = (id: string) => ({ id, name: `${id}.txt`, text: 'unsaved text', path: null, savedText: null, selection: 1 });
 
@@ -198,5 +232,92 @@ describe('quota-safe session persistence', () => {
     expect(values.has('metadata-only')).toBe(false);
     expect((await saveSession(null)).saved).toBe(true);
     expect(values.size).toBe(0);
+  });
+});
+
+
+describe('pre-rename recovery compatibility', () => {
+  function stubRecoveryDatabases(initial: Record<string, Record<string, unknown>>) {
+    const stores = new Map<string, Map<string, unknown>>(Object.entries(initial).map(([name, values]) => [name, new Map(Object.entries(values))]));
+    const opened: string[] = [];
+    vi.stubGlobal('indexedDB', {
+      open(name: string) {
+        opened.push(name);
+        if (!stores.has(name)) stores.set(name, new Map());
+        const values = stores.get(name)!;
+        const db = {
+          onversionchange: null,
+          close() {},
+          transaction(_store: string, mode = 'readonly') {
+            let error: DOMException | null = null;
+            const pending = new Map(values);
+            const tx = {
+              error: null as DOMException | null,
+              oncomplete: null as (() => void) | null,
+              onerror: null as (() => void) | null,
+              onabort: null as (() => void) | null,
+              abort() { error = new DOMException('Aborted', 'AbortError'); },
+              objectStore() {
+                return {
+                  get(key: string) {
+                    const request = { result: undefined as unknown, onsuccess: null as (() => void) | null, onerror: null as (() => void) | null, error: null as DOMException | null };
+                    queueMicrotask(() => { request.result = pending.get(key); request.onsuccess?.(); });
+                    return request;
+                  },
+                  put(value: unknown, key: string) { pending.set(key, structuredClone(value)); },
+                  delete(key: string) { pending.delete(key); },
+                };
+              },
+            };
+            queueMicrotask(() => {
+              if (error || mode === 'readonly') { tx.error = error; if (error) tx.onerror?.(); else tx.oncomplete?.(); return; }
+              values.clear(); for (const [key, value] of pending) values.set(key, value);
+              tx.oncomplete?.();
+            });
+            return tx;
+          },
+        };
+        const request = { result: db as typeof db & { createObjectStore(): void }, onsuccess: null as (() => void) | null, onerror: null, onblocked: null, onupgradeneeded: null as (() => void) | null };
+        queueMicrotask(() => { request.result.createObjectStore = () => {}; request.onupgradeneeded?.(); request.onsuccess?.(); });
+        return request;
+      },
+    });
+    return { stores, opened };
+  }
+
+  const session = { version: 1 as const, activeId: 'tab', documents: [{ id: 'tab', name: 'draft.txt', text: 'legacy draft', path: null, savedText: null, selection: 0 }] };
+
+  it('opens the legacy database only as a fallback and preserves its snapshot', async () => {
+    const { stores, opened } = stubRecoveryDatabases({ [LEGACY_DB]: { current: session } });
+    vi.resetModules();
+    const { loadSession, hasPartialSessionMetadata } = await import('../src/storage');
+    expect(await loadSession()).toEqual(session);
+    expect(await hasPartialSessionMetadata()).toBe(false);
+    expect(opened).toContain(LEGACY_DB);
+    expect(stores.get(LEGACY_DB)!.get('current')).toEqual(session);
+  });
+
+  it('prefers a current-brand snapshot over legacy data', async () => {
+    const current = { ...session, documents: [{ ...session.documents[0], text: 'current draft' }] };
+    const { stores } = stubRecoveryDatabases({ 'wrytrove-local-session-v1': { current }, [LEGACY_DB]: { current: session } });
+    vi.resetModules();
+    const { loadSession } = await import('../src/storage');
+    expect(await loadSession()).toEqual(current);
+    expect(stores.get(LEGACY_DB)!.get('current')).toEqual(session);
+  });
+
+  it('recognizes legacy metadata-only recovery as partial', async () => {
+    stubRecoveryDatabases({ [LEGACY_DB]: { 'metadata-only': { version: 1, activeId: 'tab', documents: [] } } });
+    vi.resetModules();
+    const { hasPartialSessionMetadata } = await import('../src/storage');
+    expect(await hasPartialSessionMetadata()).toBe(true);
+  });
+
+  it('does not let stale legacy partial metadata block a complete current snapshot', async () => {
+    const current = { ...session, documents: [{ ...session.documents[0], text: 'complete current draft' }] };
+    stubRecoveryDatabases({ 'wrytrove-local-session-v1': { current }, [LEGACY_DB]: { 'metadata-only': { version: 1, activeId: 'tab', documents: [] } } });
+    vi.resetModules();
+    const { hasPartialSessionMetadata } = await import('../src/storage');
+    expect(await hasPartialSessionMetadata()).toBe(false);
   });
 });

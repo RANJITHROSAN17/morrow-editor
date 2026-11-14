@@ -4,7 +4,7 @@ import { findDrift, renderSequence, REQUIRED_BODY_MARKERS, scoreItem, sequenceWo
 const fullBody = REQUIRED_BODY_MARKERS.map((marker) => `${marker}\ntext`).join('\n');
 
 const item = (over: Partial<RoadmapItem> = {}): RoadmapItem => ({
-  id: 'morrow-x',
+  id: 'wrytrove-x',
   title: 'A task',
   status: 'ready',
   difficulty: 'easy',
@@ -47,14 +47,14 @@ describe('issue quality scoring', () => {
 
   it('penalises a task that depends on unfinished work', () => {
     const plain = item({ difficulty: 'medium' });
-    expect(scoreItem({ ...plain, depends_on: ['morrow-y'] }).score).toBeLessThan(scoreItem(plain).score);
+    expect(scoreItem({ ...plain, depends_on: ['wrytrove-y'] }).score).toBeLessThan(scoreItem(plain).score);
   });
 });
 
 describe('drift detection', () => {
   it('reports a named path that does not exist', () => {
     const findings = findDrift(roadmap([item({ files: ['src/gone.ts'] })]), tree(['src/editor.ts']));
-    expect(findings).toContainEqual(expect.objectContaining({ kind: 'missing-file', id: 'morrow-x' }));
+    expect(findings).toContainEqual(expect.objectContaining({ kind: 'missing-file', id: 'wrytrove-x' }));
   });
 
   it('never files a Windows-only task as a first issue', () => {

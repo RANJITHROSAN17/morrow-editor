@@ -1,4 +1,6 @@
-# Morrow: competitive audit, user-expectation research and AI upgrade plan
+# Wrytrove: competitive audit, user-expectation research and AI upgrade plan
+
+> **Historical naming note:** product references in this snapshot now use Wrytrove. Original repository URLs, branch names, commit IDs and released artifact filenames are preserved as evidence.
 
 **Prepared:** 4 November 2026
 **Repository:** [`RANJITHROSAN17/morrow-editor`](https://github.com/RANJITHROSAN17/morrow-editor) at `c30c518`
@@ -11,11 +13,11 @@
 
 ## 1. Executive summary
 
-Morrow is a credible, unusually careful small editor. The engineering posture is better than its popularity: explicit AI consent, bounded native reads, atomic saves, stale-target rejection, a review-before-apply workflow, 118 passing tests and unusually honest documentation. Those are real assets and they are rare.
+Wrytrove is a credible, unusually careful small editor. The engineering posture is better than its popularity: explicit AI consent, bounded native reads, atomic saves, stale-target rejection, a review-before-apply workflow, 118 passing tests and unusually honest documentation. Those are real assets and they are rare.
 
 It is **not yet a daily driver**, and the gap is not AI. It is the unglamorous layer that notepad users judge in the first ten minutes: never losing a draft, opening a 200 MB log, finding a string across unsaved tabs and a folder, zooming, spell-checking, printing, and comparing two files. The top notepad projects earn their stars mostly on those basics, not on intelligence.
 
-The AI story is also narrower than the surrounding language suggests. Today Morrow has single-line Ollama completion, a manual browser hand-off to Arena, and an optional Arena API panel. That is three separate surfaces, none of which is a general assistant, and the single-line completion is the least useful shape of AI for most note-takers.
+The AI story is also narrower than the surrounding language suggests. Today Wrytrove has single-line Ollama completion, a manual browser hand-off to Arena, and an optional Arena API panel. That is three separate surfaces, none of which is a general assistant, and the single-line completion is the least useful shape of AI for most note-takers.
 
 **The opportunity is not to out-feature Obsidian or out-agent Cursor.** It is to be *the small editor that never surprises you*: plain files you own, no account, and AI that proposes changes in a diff you can read, accept, reject or undo. That is a defensible position because the loudest AI complaints in verified reviews are exactly about surprise: silent context truncation, edits outside the requested scope, hallucinated facts, forced accounts and unclear cost.
 
@@ -104,10 +106,10 @@ Stars are rounded and change daily. Licence matters: code from GPL/AGPL projects
 
 #### League 1 — direct notepad competitors
 
-| Repository | Stars | Stack | Licence | What earns its stars | What Morrow should take | What to skip |
+| Repository | Stars | Stack | Licence | What earns its stars | What Wrytrove should take | What to skip |
 |---|---:|---|---|---|---|---|
 | [notepad-plus-plus/notepad-plus-plus](https://github.com/notepad-plus-plus/notepad-plus-plus) | 29.8k | C++ | GPL | Speed, tabs, huge-file tolerance, regex search/replace across files, macros, plugins, session save, portable use | Search depth, macro recording, compare, session restore, “open anything” reliability | Dated UI, plugin sprawl, Windows-only architecture |
-| [dail8859/NotepadNext](https://github.com/dail8859/NotepadNext) | 14.8k | C++/Qt | GPL-3.0 | Cross-platform Notepad++ reimplementation | Feature parity checklist as a roadmap input | Desktop-native complexity Morrow does not need |
+| [dail8859/NotepadNext](https://github.com/dail8859/NotepadNext) | 14.8k | C++/Qt | GPL-3.0 | Cross-platform Notepad++ reimplementation | Feature parity checklist as a roadmap input | Desktop-native complexity Wrytrove does not need |
 | [0x7c13/Notepads](https://github.com/0x7c13/Notepads) | 10.3k | C# UWP | MIT | Clean Fluent UI, tabs, Markdown preview, diff viewer, session snapshot, always-on-top, 4.6★ Store rating | Modern calm UI, compact overlay, built-in diff, “stay on top” | 1 MB file limit, UWP restrictions, no zoom |
 | [rizonesoft/Notepad3](https://github.com/rizonesoft/Notepad3) | 6.7k | C | — | Scintilla-based lightweight editor, code folding, braces | Restraint and startup speed | Niche feature set |
 | [zufuliu/notepad4](https://github.com/zufuliu/notepad4) | 5.1k | C++ | — | Successor to Notepad2, syntax breadth, small binary | Broad language detection | Minimal product surface |
@@ -132,7 +134,7 @@ Stars are rounded and change daily. Licence matters: code from GPL/AGPL projects
 
 #### League 3 — AI-native editors and runtimes (where expectations are set)
 
-| Repository | Stars | Licence | Pattern worth studying | Relevance to Morrow |
+| Repository | Stars | Licence | Pattern worth studying | Relevance to Wrytrove |
 |---|---:|---|---|---|
 | [ollama/ollama](https://github.com/ollama/ollama) | 185.9k | MIT | One-command local models, OpenAI-compatible API, huge ecosystem | The default local provider; already integrated |
 | [zed-industries/zed](https://github.com/zed-industries/zed) | 92.7k | GPL/AGPL mix | Fast editor, edit prediction, multi-provider choice, partial acceptance | Best model of AI that stays out of the way |
@@ -141,7 +143,7 @@ Stars are rounded and change daily. Licence matters: code from GPL/AGPL projects
 | [cursor/cursor](https://github.com/cursor/cursor) | 33.3k | Closed source | Agentic edits, codebase context, diff review | Shows demand, but also the trust failure modes to avoid |
 | [YishenTu/claudian](https://github.com/YishenTu/claudian) | 15.9k | MIT | Embeds coding agents inside Obsidian | Proof that users want AI inside their notes, not beside them |
 
-**Demand signal:** the most-starred AI-note projects (`claudian` 15.9k, `open-notebook` 41.6k, `note-gen` 13.0k, `obsidian-smart-connections` ~5.5k) all put AI *inside* the place where notes live. They do not ask users to copy text into a separate chat app. Morrow's current browser hand-off does exactly that, which caps its usefulness.
+**Demand signal:** the most-starred AI-note projects (`claudian` 15.9k, `open-notebook` 41.6k, `note-gen` 13.0k, `obsidian-smart-connections` ~5.5k) all put AI *inside* the place where notes live. They do not ask users to copy text into a separate chat app. Wrytrove's current browser hand-off does exactly that, which caps its usefulness.
 
 ### 3.2 What the leaders actually compete on
 
@@ -158,7 +160,7 @@ Legend: ✓ present, ◐ partial/plugin, — absent, ? unverified. Compiled from
 
 | Project | Plain files | Tabs | Session/autosave | Large files | Find in files | Replace in files | Tags/backlinks | Sync/E2EE | Extensions | Built-in AI | Mobile |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| Morrow | ✓ | ✓ | ◐ recovery only | — 20 MiB cap | ✓ saved only | — | — | — | — | ◐ 3 disjoint surfaces | — |
+| Wrytrove | ✓ | ✓ | ◐ recovery only | — 20 MiB cap | ✓ saved only | — | — | — | — | ◐ 3 disjoint surfaces | — |
 | Notepad++ | ✓ | ✓ | ✓ | ◐ | ✓ | ✓ | — | — | ✓ | — | — |
 | Notepad Next | ✓ | ✓ | ◐ | ◐ | ✓ | ◐ | — | — | ◐ | — | — |
 | Notepads | ✓ | ✓ | ✓ | — 1 MB | ? | — | — | — | — | — | — |
@@ -184,7 +186,7 @@ I reviewed public, mostly verified reviews on Capterra, Software Advice, G2, Pro
 
 ### 4.2 Twelve recurring expectations
 
-| # | Expectation | What reviewers say | Product implication for Morrow |
+| # | Expectation | What reviewers say | Product implication for Wrytrove |
 |---|---|---|---|
 | 1 | **It opens instantly and stays light** | Notepad++ praised for launch speed and low memory; Notepads praised for being “as fast as Notepad”; Joplin criticised for heaviness | Protect startup budget; avoid a splash screen, background indexer or model at launch; measure cold start |
 | 2 | **Never lose my work** | Notepads users ask for Notepad++-style restore of unsaved tabs; Notepad++ auto-save praised; recovery confusion appears in Joplin/Obsidian reviews | Autosave to a crash-safe journal, plain “restore draft” UX, and a backup story that is not confused with recovery |
@@ -203,15 +205,15 @@ I reviewed public, mostly verified reviews on Capterra, Software Advice, G2, Pro
 
 These complaints repeat across Cursor, Copilot, Notion AI and Windows Notepad reviews:
 
-- **Silent context loss.** “It quietly loses the thread on a big repo and doesn’t tell you.” Morrow must show *what* will be sent and how much was truncated.
-- **Edits beyond scope.** Agents change signatures or files nobody asked about. Morrow should scope every request to an explicit selection or named document.
+- **Silent context loss.** “It quietly loses the thread on a big repo and doesn’t tell you.” Wrytrove must show *what* will be sent and how much was truncated.
+- **Edits beyond scope.** Agents change signatures or files nobody asked about. Wrytrove should scope every request to an explicit selection or named document.
 - **Confident hallucination.** Invented APIs, facts and citations. The UI must say “model output, may be wrong”, and review must be the default.
 - **Forced account or paywall.** The Windows Notepad “Rewrite” backlash is the clearest signal: an optional feature becomes a trust problem when it demands sign-in or a subscription.
 - **Opaque cost.** Notion AI’s 2025 repricing and Cursor’s usage caps dominate negative sentiment. Show an estimate before a cloud request.
 - **Unclear model routing.** Cursor is criticised for not publishing model IDs. Let users choose the model and display it on every request.
 - **No offline path.** Users value local inference even when quality is lower. Keep Ollama first-class.
 
-### 4.4 What this means for Morrow
+### 4.4 What this means for Wrytrove
 
 The market does not need another chat sidebar. It needs the boring promises kept, plus a small number of AI actions that are faster than copy-paste and safer than an agent. The evidence supports this ordering:
 
@@ -227,7 +229,7 @@ AI before step 1–3 would repeat the Windows Notepad mistake: adding intelligen
 
 ## 5. Positioning
 
-**One sentence:** *Morrow is the calm, local-first Windows editor for notes and quick code — plain files you own, and AI that shows you the change before it makes it.*
+**One sentence:** *Wrytrove is the calm, local-first Windows editor for notes and quick code — plain files you own, and AI that shows you the change before it makes it.*
 
 **Three promises the product can keep:**
 
@@ -237,7 +239,7 @@ AI before step 1–3 would repeat the Windows Notepad mistake: adding intelligen
 
 **Two promises to avoid:** “better than Notepad++” (unmeasured) and “private AI” (Ollama can route to cloud models; a loopback address is not a guarantee).
 
-**The wedge:** verification-first AI inside a small editor. Zed, Cursor and Continue are excellent, but they are developer tools with accounts, agents and large surfaces. Morrow can own the user who wants a safe “rewrite this paragraph” or “summarise this file” without signing up for an agent platform.
+**The wedge:** verification-first AI inside a small editor. Zed, Cursor and Continue are excellent, but they are developer tools with accounts, agents and large surfaces. Wrytrove can own the user who wants a safe “rewrite this paragraph” or “summarise this file” without signing up for an agent platform.
 
 ---
 
@@ -290,7 +292,7 @@ select text → choose action → (optional instruction) → consent per session
 
 **Prompt-injection handling**
 
-The selection is framed between delimiters that are guaranteed not to appear in it (`<<<MORROW_PASSAGE_n>>>`), the system prompt says the passage is data and not instructions, and the output is still treated as untrusted text. This reduces the risk; it does not eliminate it. A model can still follow injected instructions inside the passage, which is exactly why nothing is applied automatically.
+The selection is framed between delimiters that are guaranteed not to appear in it (`<<<WRYTROVE_PASSAGE_n>>>`), the system prompt says the passage is data and not instructions, and the output is still treated as untrusted text. This reduces the risk; it does not eliminate it. A model can still follow injected instructions inside the passage, which is exactly why nothing is applied automatically.
 
 **UI states**
 
@@ -420,7 +422,7 @@ Sized for a solo maintainer with occasional contributors. Dates are deliberately
 - Add a release checklist that distinguishes “merged”, “built”, “installed”, “verified on consumer Windows”.
 - Decide signing: purchase a certificate or publish reproducible-build instructions and keep the warning visible. Do not imply safety from an unsigned hash.
 - Add an update check (manual or automatic with consent), or explicitly document that there is none.
-- Consolidate docs: keep the new scope banner on `docs/ROADMAP-PROPOSED.md` (added on this branch), confirm no current document presents it as Morrow's plan, and align README, CHANGELOG and release metadata.
+- Consolidate docs: keep the new scope banner on `docs/ROADMAP-PROPOSED.md` (added on this branch), confirm no current document presents it as Wrytrove's plan, and align README, CHANGELOG and release metadata.
 - Add a benchmark harness for cold start, open 1/5/20 MiB, search and save; record results per release.
 - Resolve or document the open Dependabot alert on the default branch. GitHub reported one moderate alert on 4 November 2026; `npm audit` was clean locally, so check the Rust/Cargo alerts (the user guide already documents the Linux `glib` advisory).
 
@@ -565,11 +567,11 @@ Record completion, help needed, wrong assumptions and recoverability — never d
 
 ### 10.2 Decisions only the maintainer can make
 
-1. Is Morrow primarily a **notepad** or a **notes app**? The answer changes the next three releases.
+1. Is Wrytrove primarily a **notepad** or a **notes app**? The answer changes the next three releases.
 2. Is Windows-only acceptable for the next 12 months?
 3. Can you fund code signing? If not, what is the trust story?
 4. Will sync ever be built, or is “your files, your sync” the permanent answer?
-5. Should cloud AI be BYO-key only, or a paid Morrow feature?
+5. Should cloud AI be BYO-key only, or a paid Wrytrove feature?
 6. Will a model ever be bundled, or is Ollama a hard prerequisite?
 7. How much of the notes layer is in scope before 1.0?
 8. Who maintains LSP/plugins if those ever ship?
@@ -578,7 +580,7 @@ Record completion, help needed, wrong assumptions and recoverability — never d
 
 ## 11. What this audit does not establish
 
-- It does not measure Morrow's demand, retention, performance or accessibility.
+- It does not measure Wrytrove's demand, retention, performance or accessibility.
 - It does not verify the new AI actions against a real model, on Windows, with a screen reader.
 - It does not test competitors hands-on; feature claims come from their docs, repositories and public reviews.
 - It does not establish that any proposed feature improves outcomes. Each is a hypothesis with a stated acceptance test.
@@ -590,7 +592,7 @@ Record completion, help needed, wrong assumptions and recoverability — never d
 
 Repository and docs (accessed 4 November 2026):
 
-- Morrow repository, README, USER-GUIDE, `docs/PRODUCT-RESEARCH-2026.md`, `docs/IMPLEMENTATION-0.4.0.md`, `docs/ROADMAP-PROPOSED.md`, `src/*`, `tests/*`.
+- Wrytrove repository, README, USER-GUIDE, `docs/PRODUCT-RESEARCH-2026.md`, `docs/IMPLEMENTATION-0.4.0.md`, `docs/ROADMAP-PROPOSED.md`, `src/*`, `tests/*`.
 - [Notepad++ repository](https://github.com/notepad-plus-plus/notepad-plus-plus) · [manual: searching](https://npp-user-manual.org/docs/searching/) · [preferences](https://npp-user-manual.org/docs/preferences/)
 - [Notepad Next](https://github.com/dail8859/NotepadNext) · [Notepads](https://github.com/0x7c13/Notepads) · [Microsoft Store listing](https://www.microsoft.com/store/apps/9nhl4nsc67wm)
 - [Notepad3](https://github.com/rizonesoft/Notepad3) · [notepad4](https://github.com/zufuliu/notepad4)

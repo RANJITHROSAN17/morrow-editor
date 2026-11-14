@@ -133,13 +133,13 @@ export async function writeTo(ref: FileRef, bytes: Uint8Array, name: string, exp
       // to replace an unverified file. Both sides validate this metadata.
       if (expectedHash !== null && !/^[0-9a-f]{64}$/u.test(expectedHash)) throw new Error('Invalid saved file version.');
       await invoke('safe_write', bytes, { headers: {
-        'x-morrow-path': encodeURIComponent(ref.path),
-        'x-morrow-expected': expectedHash ?? 'absent',
-        'x-morrow-force': force ? '1' : '0',
+        'x-wrytrove-path': encodeURIComponent(ref.path),
+        'x-wrytrove-expected': expectedHash ?? 'absent',
+        'x-wrytrove-force': force ? '1' : '0',
       } });
     } catch (error) {
       const message = String(error);
-      if (message.includes('MORROW_FILE_CHANGED')) throw new ExternalChangeError();
+      if (message.includes('WRYTROVE_FILE_CHANGED')) throw new ExternalChangeError();
       throw new Error(message);
     }
   } else if (ref.kind === 'browser') {

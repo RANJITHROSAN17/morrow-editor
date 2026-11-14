@@ -1,6 +1,6 @@
 {
   "meta": {
-    "description": "Human-reviewed contributor queue for Morrow. The bot reads this file and nothing else. Every entry is reviewed in a normal pull request: an agent that decides at runtime what to build will duplicate, hallucinate, and file tasks nobody can start. Seeded only with work derived from the actual tree (untested pure modules), not from docs/RESEARCH-AND-ROADMAP.md, which is 38 KB of ideas and belongs here as backlog. Entries are serialised by 'theme': the queue files the next item only when the previous item in that theme is closed.",
+    "description": "Human-reviewed contributor queue for Wrytrove. The bot reads this file and nothing else. Every entry is reviewed in a normal pull request: an agent that decides at runtime what to build will duplicate, hallucinate, and file tasks nobody can start. Seeded only with work derived from the actual tree (untested pure modules), not from docs/RESEARCH-AND-ROADMAP.md, which is 38 KB of ideas and belongs here as backlog. Entries are serialised by 'theme': the queue files the next item only when the previous item in that theme is closed.",
     "owner": "RANJITHROSAN17",
     "reply_sla_hours": 24,
     "open_easy_cap": 3,
@@ -13,7 +13,7 @@
       "status: ready   -> eligible; the bot may file it when the cap allows",
       "status: filed   -> bot created it; the marker lives in the issue body",
       "status: shipped -> bot may comment + close its own issue, naming the release",
-      "Morrow's constraint: a contributor without Windows must be able to finish any 'easy' item. Do not mark an entry 'ready' if it needs `npm run tauri dev`, the Rust tests, or native dialogs.",
+      "Wrytrove's constraint: a contributor without Windows must be able to finish any 'easy' item. Do not mark an entry 'ready' if it needs `npm run tauri dev`, the Rust tests, or native dialogs.",
       "every filing candidate must name a 'theme'; the bot serialises work by theme (one open issue per theme at a time)",
       "a theme may hold only one ready/filed candidate, so the page never asks a contributor to choose between two halves of the same job"
     ],
@@ -21,7 +21,7 @@
   },
   "items": [
     {
-      "id": "morrow-001-markdown-render-tests",
+      "id": "wrytrove-001-markdown-render-tests",
       "title": "test: cover src/markdown-render.ts, the pure Markdown-to-preview builder",
       "theme": "markdown-preview",
       "status": "shipped",
@@ -41,7 +41,7 @@
       "note": "Closed as invalid: src/markdown-render.ts is already covered by tests/markdown-preview.test.ts."
     },
     {
-      "id": "morrow-004-contributing",
+      "id": "wrytrove-004-contributing",
       "title": "docs: add CONTRIBUTING.md with a Windows-free development path",
       "theme": "contributor-onboarding",
       "status": "shipped",
@@ -56,10 +56,10 @@
       ],
       "verify": "grep -n 'npm test' CONTRIBUTING.md",
       "time_estimate": "~1 hour",
-      "body": "## Context\n\nGitHub's community profile reports `contributing: MISSING` for this repo (`health_percentage: 42`), and the README's Contributing section is four lines. `SECURITY.md` is also absent, which matters because `src/arena.ts` takes an API key. The bigger problem: nothing tells a visitor that most of Morrow is platform-neutral TypeScript they can work on without Windows or MSVC.\n\n## What to change\n\n- `CONTRIBUTING.md` (new) covering: the Windows-free path (`npm ci`, `npm test`, `npm run test:e2e`), what genuinely requires Windows (`npm run tauri dev`, `cargo test`, native dialogs), commit style, and the reply SLA.\n- `SECURITY.md` (private disclosure via GitHub Security Advisories; no bounty).\n- `.github/ISSUE_TEMPLATE/bug_report.yml`, `config.yml`, `PULL_REQUEST_TEMPLATE.md`, `CODE_OF_CONDUCT.md`.\n\n## Acceptance criteria\n\n- [ ] A Linux/macOS contributor can follow it to a green `npm test`\n- [ ] It names what cannot be done off Windows rather than implying Windows is required for everything\n- [ ] `community/profile` health reaches 100 and reports a security policy\n\n## How to verify\n\n```bash\nnpm ci && npm test\ncurl -s https://api.github.com/repos/RANJITHROSAN17/morrow-editor/community/profile | grep health_percentage\n```\n\n## Where to start\n\n1. `README.md` §\"Development and testing\" — the commands already exist there.\n2. `.github/workflows/windows.yml` — shows the full gate CI runs.\n\n## Time estimate\n\n~1 hour."
+      "body": "## Context\n\nGitHub's community profile reports `contributing: MISSING` for this repo (`health_percentage: 42`), and the README's Contributing section is four lines. `SECURITY.md` is also absent, which matters because `src/arena.ts` takes an API key. The bigger problem: nothing tells a visitor that most of Wrytrove is platform-neutral TypeScript they can work on without Windows or MSVC.\n\n## What to change\n\n- `CONTRIBUTING.md` (new) covering: the Windows-free path (`npm ci`, `npm test`, `npm run test:e2e`), what genuinely requires Windows (`npm run tauri dev`, `cargo test`, native dialogs), commit style, and the reply SLA.\n- `SECURITY.md` (private disclosure via GitHub Security Advisories; no bounty).\n- `.github/ISSUE_TEMPLATE/bug_report.yml`, `config.yml`, `PULL_REQUEST_TEMPLATE.md`, `CODE_OF_CONDUCT.md`.\n\n## Acceptance criteria\n\n- [ ] A Linux/macOS contributor can follow it to a green `npm test`\n- [ ] It names what cannot be done off Windows rather than implying Windows is required for everything\n- [ ] `community/profile` health reaches 100 and reports a security policy\n\n## How to verify\n\n```bash\nnpm ci && npm test\ncurl -s https://api.github.com/repos/RANJITHROSAN17/morrow-editor/community/profile | grep health_percentage\n```\n\n## Where to start\n\n1. `README.md` §\"Development and testing\" — the commands already exist there.\n2. `.github/workflows/windows.yml` — shows the full gate CI runs.\n\n## Time estimate\n\n~1 hour."
     },
     {
-      "id": "morrow-005-release",
+      "id": "wrytrove-005-release",
       "title": "chore(ci): publish the built installer as a tagged preview release",
       "theme": "release-pipeline",
       "status": "shipped",
@@ -77,7 +77,7 @@
       "body": "## Context\n\n`windows.yml` already builds the NSIS installer and writes `SHA256SUMS.txt`, then uploads them as an artifact that expires, and there are **0 releases and 0 tags**. The installer already has a checksum but no permanent home.\n\n## What to change\n\n- `.github/workflows/windows.yml`: on a `v*` tag, create a release with the `.exe` and `SHA256SUMS.txt` attached.\n- Release notes must lead with the README's existing honesty line: early preview, unsigned, keep backups.\n\n## Acceptance criteria\n\n- [ ] A tag push produces a release with both assets\n- [ ] The asset downloads without a GitHub login\n- [ ] The release body says \"unsigned preview\", not \"production\"\n- [ ] `CHANGELOG.md` moves 0.4.0 from \"unreleased preview\" to a dated heading\n\n## How to verify\n\n```bash\ngit tag v0.4.0 && git push origin v0.4.0\ngh release view v0.4.0\n```\n\n## Where to start\n\n1. `.github/workflows/windows.yml` — the build, checksum and upload steps already exist.\n2. `CHANGELOG.md` — the release text is already written.\n\n## Time estimate\n\n~1-2 hours."
     },
     {
-      "id": "morrow-003-encoding-edge-cases",
+      "id": "wrytrove-003-encoding-edge-cases",
       "title": "test: extend encoding coverage to BOMs, mixed line endings and round-trips",
       "theme": "encoding-integrity",
       "status": "ready",
@@ -97,7 +97,7 @@
       "body": "## Context\n\n`src/encoding.ts` does `decodeFile` / `encodeFile` / `inspectLineEndings` over raw `Uint8Array`, and it is where \"my file got mangled\" bugs come from. `tests/encoding.test.ts` has 15 passing tests — this issue extends it rather than starting it, so you are working from examples.\n\nRuns on any OS.\n\n## What to change\n\n- `tests/encoding.test.ts`: add cases for the three edges below.\n\n## Acceptance criteria\n\nThree of the five edges originally listed here are **already covered**, so they are not repeated:\nBOM round-tripping (4 encodings × 3 line endings), CRLF byte-for-byte survival, `mixed: true`,\nand invalid bytes throwing a clear error all have tests today.\n\n- [ ] A file of exactly `MAX_FILE_BYTES` is accepted by `decodeFile`, and one byte over is refused with the 20 MiB message\n- [ ] The same limit on the write path: `encodeFile` output at exactly `MAX_FILE_BYTES` succeeds, one byte over is refused\n- [ ] A UTF-32 LE file (starts `ff fe 00 00`) is refused with the \"UTF-32 is not supported\" message rather than decoded as UTF-16 LE. `decodeFile` special-cases this; nothing tests it\n- [ ] Each new case follows the existing file's style: bare `it(...)`, no new dependency, no snapshot\n\n## How to verify\n\n```bash\nnpx vitest run tests/encoding.test.ts\nnpm test\nnpm run build\n```\n\n## Where to start\n\n1. `src/encoding.ts` — 102 lines, four exports. `MAX_FILE_BYTES` is line 4, the UTF-32 check is around line 34.\n2. `tests/encoding.test.ts` — 15 existing tests show the fixture style; the \"rejects invalid bytes…\" case is the closest model for the refusal tests.\n\n## Time estimate\n\n~2-3 hours. Note the 20 MiB fixtures: build the boundary case with a length assertion rather than allocating 20 MiB twice if you can.\n"
     },
     {
-      "id": "morrow-006-samples-integrity-tests",
+      "id": "wrytrove-006-samples-integrity-tests",
       "title": "test(editor): verify bundled first-launch samples and secret-scan cleanliness",
       "theme": "first-run-samples",
       "status": "backlog",
@@ -117,7 +117,7 @@
       "body": "## Context\n\n`src/samples.ts` defines `PYTHON_SAMPLE` and `MARKDOWN_SAMPLE` — the documents every newcomer sees on first launch. Neither export currently has unit tests, so an accidental tab character, missing trailing newline, or sample token that trips `findPotentialSecrets()` in `src/sensitive-text.ts` ships silently.\n\nRuns on **any OS** (no Windows, Rust, or MSVC required).\n\n## What to change\n\n- `tests/samples.test.ts` (new): assert structural and privacy invariants on both sample documents.\n\n## Acceptance criteria\n\n- [ ] Both `PYTHON_SAMPLE` and `MARKDOWN_SAMPLE` are non-empty, distinct strings ending with `\\n` and containing no `\\r`\n- [ ] `PYTHON_SAMPLE` uses space indentation (no `\\t` characters)\n- [ ] `MARKDOWN_SAMPLE` starts with a top-level `# ` heading and builds cleanly via `buildMarkdownPreview()`\n- [ ] `findPotentialSecrets(PYTHON_SAMPLE, MARKDOWN_SAMPLE)` returns `[]` so first launch never triggers a false secret warning\n\n## How to verify\n\n```bash\nnpx vitest run tests/samples.test.ts\nnpm test\nnpm run build\n```\n\n## Where to start\n\n1. `src/samples.ts` — 54 lines, two string exports.\n2. `src/sensitive-text.ts` — `findPotentialSecrets()`.\n\n## Time estimate\n\n~1-2 hours."
     },
     {
-      "id": "morrow-007-ai-fim-context-and-sanitization",
+      "id": "wrytrove-007-ai-fim-context-and-sanitization",
       "title": "feat(ai): guard FIM context slicing at surrogate-pair boundaries and strip chatty prefixes",
       "theme": "ai-fim-context",
       "status": "ready",
@@ -137,7 +137,7 @@
       "body": "## Context\n\n`src/ai.ts` builds local Ollama FIM requests using `text.slice(Math.max(0, cursor - AI_CONTEXT_BEFORE), cursor)` and `text.slice(cursor, cursor + AI_CONTEXT_AFTER)`. In UTF-16 JavaScript strings, slicing directly at `cursor - 3500` or `cursor + 1200` can split a surrogate pair (emoji or non-BMP symbol), sending lone surrogates that break JSON encoding or confuse local models. In addition, `firstSuggestion()` drops lines starting with ```` ``` ```` or `<|`, but does not reject `<fim_` / `[INST]` control markers.\n\nRuns on **any OS**.\n\n## What to change\n\n- `src/ai.ts`: adjust `buildCompletionRequest()` slice start/end by ±1 code unit if a boundary lands in the middle of a UTF-16 surrogate pair, and harden `firstSuggestion()` against `<fim_` / `[INST]` / `</s>` control prefixes.\n- `tests/ai.test.ts`: add unit tests for surrogate-pair boundaries at `AI_CONTEXT_BEFORE` / `AI_CONTEXT_AFTER` and control-token filtering.\n\n## Acceptance criteria\n\n- [ ] `buildCompletionRequest()` never produces lone high/low surrogates in `prompt` or `suffix` when valid UTF-16 input is passed\n- [ ] `firstSuggestion()` returns `''` for `<fim_middle>`, `</s>`, and `[INST]` artifacts while preserving valid indented code completions\n- [ ] `npx vitest run tests/ai.test.ts` and `npm run build` pass\n\n## How to verify\n\n```bash\nnpx vitest run tests/ai.test.ts\nnpm test\nnpm run build\n```\n\n## Where to start\n\n1. `src/ai.ts` — `buildCompletionRequest()` and `firstSuggestion()` (lines 11-31).\n2. `tests/ai.test.ts` — existing unit test structure.\n\n## Time estimate\n\n~2-3 hours."
     },
     {
-      "id": "morrow-008-workspace-quick-open-ranking",
+      "id": "wrytrove-008-workspace-quick-open-ranking",
       "title": "feat(workspace): deterministic Quick Open filename and path ranking across large workspaces",
       "theme": "workspace-quick-open",
       "status": "backlog",
@@ -154,10 +154,10 @@
       ],
       "verify": "npx vitest run tests/workspace.test.ts",
       "time_estimate": "~3-4 hours",
-      "body": "## Context\n\nMorrow indexes up to `MAX_WORKSPACE_FILES` (5,000 files) in `src/workspace.ts` for Quick Open (`Ctrl+P`). Plain substring filtering ranks `docs/archive/old-main.ts.bak` ahead of `src/main.ts` when typing `main.ts`, making navigation feel noisy in multi-folder projects.\n\nRuns on **any OS**.\n\n## What to change\n\n- `src/workspace.ts`: export a pure `rankWorkspaceFiles(files: WorkspaceFile[], query: string, limit = 50): WorkspaceFile[]` scoring exact basename match > basename prefix > path-segment/camelCase boundary > ordered subsequence, breaking ties by shorter relative path and locale order.\n- `src/workbench.ts`: wire Quick Open filtering through `rankWorkspaceFiles`.\n- `tests/workspace.test.ts`: test ranking order, case-insensitivity, empty-query behaviour, and 5,000-entry performance (`< 25 ms`).\n\n## Acceptance criteria\n\n- [ ] Typing `main.ts` ranks `src/main.ts` above `tests/e2e/domain.ts` or `docs/main.ts.md`\n- [ ] Empty query returns top entries deterministically capped at `limit`\n- [ ] Pure function tested in `tests/workspace.test.ts` with zero new dependencies\n\n## How to verify\n\n```bash\nnpx vitest run tests/workspace.test.ts\nnpm test\nnpm run build\n```\n\n## Where to start\n\n1. `src/workspace.ts` — `WorkspaceFile` and `compareEntries`.\n2. `tests/workspace.test.ts` — existing workspace fixture helpers.\n\n## Time estimate\n\n~3-4 hours."
+      "body": "## Context\n\nWrytrove indexes up to `MAX_WORKSPACE_FILES` (5,000 files) in `src/workspace.ts` for Quick Open (`Ctrl+P`). Plain substring filtering ranks `docs/archive/old-main.ts.bak` ahead of `src/main.ts` when typing `main.ts`, making navigation feel noisy in multi-folder projects.\n\nRuns on **any OS**.\n\n## What to change\n\n- `src/workspace.ts`: export a pure `rankWorkspaceFiles(files: WorkspaceFile[], query: string, limit = 50): WorkspaceFile[]` scoring exact basename match > basename prefix > path-segment/camelCase boundary > ordered subsequence, breaking ties by shorter relative path and locale order.\n- `src/workbench.ts`: wire Quick Open filtering through `rankWorkspaceFiles`.\n- `tests/workspace.test.ts`: test ranking order, case-insensitivity, empty-query behaviour, and 5,000-entry performance (`< 25 ms`).\n\n## Acceptance criteria\n\n- [ ] Typing `main.ts` ranks `src/main.ts` above `tests/e2e/domain.ts` or `docs/main.ts.md`\n- [ ] Empty query returns top entries deterministically capped at `limit`\n- [ ] Pure function tested in `tests/workspace.test.ts` with zero new dependencies\n\n## How to verify\n\n```bash\nnpx vitest run tests/workspace.test.ts\nnpm test\nnpm run build\n```\n\n## Where to start\n\n1. `src/workspace.ts` — `WorkspaceFile` and `compareEntries`.\n2. `tests/workspace.test.ts` — existing workspace fixture helpers.\n\n## Time estimate\n\n~3-4 hours."
     },
     {
-      "id": "morrow-009-sensitive-text-placeholder-hygiene",
+      "id": "wrytrove-009-sensitive-text-placeholder-hygiene",
       "title": "feat(security): ignore placeholder examples in sensitive-text heuristic while catching sk-/Slack tokens",
       "theme": "text-safety",
       "status": "backlog",
@@ -177,7 +177,7 @@
       "body": "## Context\n\n`src/sensitive-text.ts` warns before sending text containing likely credentials while returning labels only (never the matched secret). Currently `password = YOUR_PASSWORD_HERE` or `api_key: <insert-key>` in a README triggers `credential assignment`, while `sk-...` / `xoxb-...` token prefixes are missed.\n\nRuns on **any OS**.\n\n## What to change\n\n- `src/sensitive-text.ts`: ignore obvious placeholder values (`YOUR_...`, `<...>`, `example`, `changeme`, `xxx...`, `$ENV_VAR`) on credential assignments, and add rules for OpenAI/Anthropic (`sk-...`) and Slack (`xox[baprs]-...`) token prefixes.\n- `tests/sensitive-text.test.ts`: cover positive detections, placeholder non-triggers, and assert returned strings never echo input tokens.\n\n## Acceptance criteria\n\n- [ ] Placeholders (`YOUR_API_KEY`, `<token>`, `changeme`) do not trigger false warnings\n- [ ] `sk-` and `xoxb-` token patterns are detected and return label names only\n- [ ] `npx vitest run tests/sensitive-text.test.ts` passes\n\n## How to verify\n\n```bash\nnpx vitest run tests/sensitive-text.test.ts\nnpm test\n```\n\n## Time estimate\n\n~2 hours."
     },
     {
-      "id": "morrow-010-change-review-diff-stats",
+      "id": "wrytrove-010-change-review-diff-stats",
       "title": "feat(editor): summarize added/removed line counts and reject no-op replacements in change-review",
       "theme": "change-review",
       "status": "backlog",
@@ -193,10 +193,10 @@
       ],
       "verify": "npx vitest run tests/change-review.test.ts",
       "time_estimate": "~2-3 hours",
-      "body": "## Context\n\n`src/change-review.ts` powers Morrow's literal replacement review gate (`makeReviewTarget`, `reviewDiff`). Reviewing large selections is calmer when the header reports exact `+added / -removed` line counts and refuses identical no-op replacements up front.\n\nRuns on **any OS**.\n\n## What to change\n\n- `src/change-review.ts`: add `summarizeReviewDiff(changes: Change[] | null)` returning `{ addedLines, removedLines, unchangedLines }`, and reject identical normalized replacements with a clear message.\n- `tests/change-review.test.ts`: cover line counts, bounded fallback (`null`), and identical-text refusal.\n\n## Acceptance criteria\n\n- [ ] Identical original vs replacement text throws a clear actionable message\n- [ ] `summarizeReviewDiff` reports exact line counts and handles `null` safely\n- [ ] `npx vitest run tests/change-review.test.ts` passes\n\n## How to verify\n\n```bash\nnpx vitest run tests/change-review.test.ts\nnpm test\n```\n\n## Time estimate\n\n~2-3 hours."
+      "body": "## Context\n\n`src/change-review.ts` powers Wrytrove's literal replacement review gate (`makeReviewTarget`, `reviewDiff`). Reviewing large selections is calmer when the header reports exact `+added / -removed` line counts and refuses identical no-op replacements up front.\n\nRuns on **any OS**.\n\n## What to change\n\n- `src/change-review.ts`: add `summarizeReviewDiff(changes: Change[] | null)` returning `{ addedLines, removedLines, unchangedLines }`, and reject identical normalized replacements with a clear message.\n- `tests/change-review.test.ts`: cover line counts, bounded fallback (`null`), and identical-text refusal.\n\n## Acceptance criteria\n\n- [ ] Identical original vs replacement text throws a clear actionable message\n- [ ] `summarizeReviewDiff` reports exact line counts and handles `null` safely\n- [ ] `npx vitest run tests/change-review.test.ts` passes\n\n## How to verify\n\n```bash\nnpx vitest run tests/change-review.test.ts\nnpm test\n```\n\n## Time estimate\n\n~2-3 hours."
     },
     {
-      "id": "morrow-011-storage-quota-and-schema-guard",
+      "id": "wrytrove-011-storage-quota-and-schema-guard",
       "title": "fix(storage): degrade gracefully when localStorage exceeds quota during session recovery",
       "theme": "storage-resilience",
       "status": "backlog",
@@ -215,7 +215,7 @@
       "body": "## Context\n\nOpening several multi-megabyte files with session recovery enabled can exceed WebView2 / browser `localStorage` quota (~5 MiB), throwing `QuotaExceededError` during autosave.\n\nRuns on **any OS**.\n\n## What to change\n\n- `src/storage.ts`: return a structured `{ saved: boolean; quotaExceeded: boolean }` status from session persistence instead of throwing uncaught exceptions, omitting oversized buffer bodies while keeping tab metadata when quota is exceeded.\n- `tests/storage.test.ts`: simulate `QuotaExceededError` and verify `aiEnabled` remains session-only (`false` on reload).\n\n## Acceptance criteria\n\n- [ ] `QuotaExceededError` never crashes typing or tab switching\n- [ ] Privacy invariant (`aiEnabled` never restored as `true`) still holds\n- [ ] `npx vitest run tests/storage.test.ts` passes\n\n## How to verify\n\n```bash\nnpx vitest run tests/storage.test.ts\nnpm test\n```\n\n## Time estimate\n\n~2-3 hours."
     },
     {
-      "id": "morrow-012-external-file-change-detection",
+      "id": "wrytrove-012-external-file-change-detection",
       "title": "feat(windows): detect external on-disk edits on focus and prompt before overwriting",
       "theme": "external-change-detection",
       "status": "backlog",
@@ -232,10 +232,10 @@
       ],
       "verify": "npx vitest run tests/platform.test.ts && npm run build",
       "time_estimate": "~4-6 hours",
-      "body": "## Context\n\n`SavedDocument` in `src/storage.ts` already tracks `hash: string | null`, `savedText`, and `path`. When an external tool (`git checkout`, formatter) modifies an open file on Windows, refocusing Morrow should detect hash divergence cleanly.\n\n## What to change\n\n- `src/platform.ts` & `src/workbench.ts`: re-check on-disk hash for active native tabs on window focus; offer one-click Reload for clean tabs and a conflict banner for dirty tabs so unsaved edits are never clobbered.\n- `tests/platform.test.ts`: mock platform file reads to test clean-tab reload prompt vs dirty-tab conflict preservation.\n\n## Acceptance criteria\n\n- [ ] Dirty tabs are never silently overwritten when disk bytes change\n- [ ] Clean tabs surface a clear reload notice when the on-disk hash changes\n- [ ] Unit tests in `tests/platform.test.ts` pass on Linux/macOS/Windows\n\n## How to verify\n\n```bash\nnpx vitest run tests/platform.test.ts\nnpm test\nnpm run build\n```\n\n## Time estimate\n\n~4-6 hours."
+      "body": "## Context\n\n`SavedDocument` in `src/storage.ts` already tracks `hash: string | null`, `savedText`, and `path`. When an external tool (`git checkout`, formatter) modifies an open file on Windows, refocusing Wrytrove should detect hash divergence cleanly.\n\n## What to change\n\n- `src/platform.ts` & `src/workbench.ts`: re-check on-disk hash for active native tabs on window focus; offer one-click Reload for clean tabs and a conflict banner for dirty tabs so unsaved edits are never clobbered.\n- `tests/platform.test.ts`: mock platform file reads to test clean-tab reload prompt vs dirty-tab conflict preservation.\n\n## Acceptance criteria\n\n- [ ] Dirty tabs are never silently overwritten when disk bytes change\n- [ ] Clean tabs surface a clear reload notice when the on-disk hash changes\n- [ ] Unit tests in `tests/platform.test.ts` pass on Linux/macOS/Windows\n\n## How to verify\n\n```bash\nnpx vitest run tests/platform.test.ts\nnpm test\nnpm run build\n```\n\n## Time estimate\n\n~4-6 hours."
     },
     {
-      "id": "morrow-013-writing-stats-coverage",
+      "id": "wrytrove-013-writing-stats-coverage",
       "title": "test(writing): pin TextStats math for prose, CJK text and reading time",
       "theme": "word-stats",
       "status": "ready",
@@ -255,7 +255,7 @@
       "body": "## Context\nsrc/word-stats.ts is pure and feeds the live `#word-count`, the `#read-stats` reading time and the daily-goal chip, but its test file covers only the happy path. A miscount is user-visible on every keystroke, and reading time is the number writers quote back to you.\n\n## Acceptance criteria\n- [ ] Cover empty text, whitespace-only text and a single word without throwing.\n- [ ] Count CJK and emoji text the way the module documents (never double-counting a surrogate pair).\n- [ ] Pin reading-time rounding in both directions: a partial minute rounds up, and a very long note does not overflow.\n- [ ] Assert `describeStats` returns one human line for each shape (empty, short, long) with no `undefined` or `NaN`.\n- [ ] Leave production code untouched unless a case proves it wrong — then fix it and explain why in the PR.\n\n## How to verify\n```bash\nnpx vitest run tests/word-stats.test.ts && npx tsc --noEmit\n```\n\n## Time estimate\n~90 minutes"
     },
     {
-      "id": "morrow-014-note-index-refresh-on-save",
+      "id": "wrytrove-014-note-index-refresh-on-save",
       "title": "feat(notes): refresh backlinks and the tag cloud when an indexed note is saved",
       "theme": "note-index",
       "status": "backlog",
@@ -276,7 +276,7 @@
       "body": "## Context\nThe Notes panel indexes every note in the open folders and shows outlines, tags, backlinks and orphans. The index is invalidated when a folder note is created or captured, but saving an ordinary open tab leaves stale backlinks until the panel is reopened. Users read stale link data as a broken feature.\n\n## Acceptance criteria\n- [ ] Saving a tab that lives inside an open folder marks the index stale and refreshes it after the save succeeds.\n- [ ] Refreshing stays lazy: nothing is read from disk while the Notes panel is closed.\n- [ ] A folder with hundreds of notes does not block typing — the rebuild runs off the keystroke path and a second save coalesces into one refresh.\n- [ ] Add a unit test for the invalidation decision through a pure helper, not the DOM.\n\n## How to verify\n```bash\nnpx vitest run tests/note-index.test.ts && npx tsc --noEmit && npm run build\n```\n\n## Time estimate\n~2.5 hours"
     },
     {
-      "id": "morrow-015-focus-mode-a11y",
+      "id": "wrytrove-015-focus-mode-a11y",
       "title": "fix(a11y): keep focus and typewriter modes legible and announced",
       "theme": "focus-accessibility",
       "status": "backlog",
@@ -298,7 +298,7 @@
       "body": "## Context\nFocus mode dims every paragraph but the current one. Dimming is a contrast change, and this project already treats body text below 4.5:1 as a bug (see tests/contrast.test.ts). A user who relies on the dimmed text must still be able to read it, and a screen-reader user gets no signal that the mode is on.\n\n## Acceptance criteria\n- [ ] Dimmed paragraphs keep at least a 4.5:1 contrast ratio against the editor background in both themes, proven by a test.\n- [ ] Turning focus, typewriter or zen mode on is announced through the existing `role=\"status\"` region, not only a toast.\n- [ ] The focus chip is reachable and toggleable from the keyboard alone and reports `aria-pressed`.\n- [ ] Reduced-motion users do not get the opacity transition.\n\n## How to verify\n```bash\nnpx vitest run tests/focus-mode.test.ts tests/contrast.test.ts && npx tsc --noEmit\n```\n\n## Time estimate\n~2 hours"
     },
     {
-      "id": "morrow-016-capture-and-daily-guards",
+      "id": "wrytrove-016-capture-and-daily-guards",
       "title": "fix(notes): bound quick capture and daily notes against re-entrancy and partial writes",
       "theme": "capture-safety",
       "status": "backlog",

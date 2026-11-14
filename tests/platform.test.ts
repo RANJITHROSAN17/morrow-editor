@@ -61,9 +61,9 @@ describe('native save IPC safety metadata', () => {
     const result = await writeTo(ref, bytes, 'draft 📝.txt', null);
     expect(result).toMatch(/^[0-9a-f]{64}$/u);
     expect(invoke).toHaveBeenCalledWith('safe_write', bytes, { headers: {
-      'x-morrow-path': encodeURIComponent(ref.path),
-      'x-morrow-expected': 'absent',
-      'x-morrow-force': '0',
+      'x-wrytrove-path': encodeURIComponent(ref.path),
+      'x-wrytrove-expected': 'absent',
+      'x-wrytrove-force': '0',
     } });
   });
 
@@ -71,11 +71,11 @@ describe('native save IPC safety metadata', () => {
     const hash = 'a'.repeat(64);
     await writeTo(ref, bytes, 'draft.txt', hash);
     expect(invoke).toHaveBeenLastCalledWith('safe_write', bytes, { headers: {
-      'x-morrow-path': encodeURIComponent(ref.path), 'x-morrow-expected': hash, 'x-morrow-force': '0',
+      'x-wrytrove-path': encodeURIComponent(ref.path), 'x-wrytrove-expected': hash, 'x-wrytrove-force': '0',
     } });
     await writeTo(ref, bytes, 'draft.txt', hash, true);
     expect(invoke).toHaveBeenLastCalledWith('safe_write', bytes, { headers: {
-      'x-morrow-path': encodeURIComponent(ref.path), 'x-morrow-expected': hash, 'x-morrow-force': '1',
+      'x-wrytrove-path': encodeURIComponent(ref.path), 'x-wrytrove-expected': hash, 'x-wrytrove-force': '1',
     } });
   });
 
@@ -84,7 +84,7 @@ describe('native save IPC safety metadata', () => {
       await expect(writeTo(ref, bytes, 'draft.txt', invalid)).rejects.toThrow(/Invalid saved file version/);
     }
     expect(invoke).not.toHaveBeenCalled();
-    vi.mocked(invoke).mockRejectedValue('MORROW_FILE_CHANGED: destination already exists');
+    vi.mocked(invoke).mockRejectedValue('WRYTROVE_FILE_CHANGED: destination already exists');
     await expect(writeTo(ref, bytes, 'draft.txt', null)).rejects.toBeInstanceOf(ExternalChangeError);
   });
 });

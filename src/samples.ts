@@ -1,4 +1,4 @@
-export const PYTHON_SAMPLE = `# Welcome to Morrow.
+export const PYTHON_SAMPLE = `# Welcome to Wrytrove.
 # A little space for big ideas, notes, and code.
 
 from dataclasses import dataclass
@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
 export const MARKDOWN_SAMPLE = `# A little space for big ideas
 
-Welcome to Morrow, your simple text editor for notes, code, and everything in between.
+Welcome to Wrytrove, your simple text editor for notes, code, and everything in between.
 
 ## Get started
 
@@ -48,7 +48,7 @@ Welcome to Morrow, your simple text editor for notes, code, and everything in be
 
 ## Your work is yours
 
-Morrow does not send your files anywhere by default. You can opt in to suggestions through Ollama running on your computer.
+Wrytrove does not send your files anywhere by default. You can opt in to suggestions through Ollama running on your computer.
 
 These are example files. Edit them, or start with a fresh page.
 `;

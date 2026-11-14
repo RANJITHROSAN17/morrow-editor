@@ -1,4 +1,4 @@
-"""Render Morrow's icon at Windows sizes with Pillow; see icons/icon.svg for the vector source."""
+"""Render Wrytrove's icon at Windows sizes with Pillow; see icons/icon.svg for the vector source."""
 from math import comb
 from pathlib import Path
 from PIL import Image, ImageDraw

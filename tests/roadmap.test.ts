@@ -204,13 +204,26 @@ describe('roadmap automation helpers', () => {
     const rm = bots.loadRoadmap();
     expect(bots.detectDrift(rm)).toEqual([]);
     const status = bots.renderStatusMarkdown(rm, [
-      { number: 15, state: 'open', body: 'task\n<!-- roadmap:morrow-003-encoding-edge-cases -->' },
+      { number: 15, state: 'open', body: 'task\n<!-- roadmap:wrytrove-003-encoding-edge-cases -->' },
     ]);
     expect(status.startsWith(bots.STATUS_MARKER)).toBe(true);
     expect(status).toContain('#15');
   });
 
-  it('classifies Morrow issues and PR paths by editor/AI/Windows area', async () => {
+  it('normalizes pre-rename roadmap markers without touching unrelated namespaces', async () => {
+    // @ts-expect-error plain ESM helper script
+    const bots = await import('../scripts/roadmap-bots.js');
+    expect(bots.extractMarkerId('<!-- roadmap:morrow-003-encoding-edge-cases -->')).toBe('wrytrove-003-encoding-edge-cases');
+    expect(bots.extractMarkerId('<!-- roadmap:wrytrove-003-encoding-edge-cases -->')).toBe('wrytrove-003-encoding-edge-cases');
+    expect(bots.extractMarkerId('<!-- roadmap:other-003 -->')).toBe('other-003');
+    const status = bots.renderStatusMarkdown(bots.loadRoadmap(), [
+      { number: 14, state: 'closed', body: '<!-- roadmap:morrow-003-encoding-edge-cases -->' },
+    ]);
+    expect(status).toContain('`wrytrove-003-encoding-edge-cases` issue is closed');
+    expect(status).not.toContain('| `wrytrove-003-encoding-edge-cases` |');
+  });
+
+  it('classifies Wrytrove issues and PR paths by editor/AI/Windows area', async () => {
     // @ts-expect-error plain ESM helper script
     const bots = await import('../scripts/roadmap-bots.js');
     const labels = bots.classifyIssue('Ollama FIM completion hangs on Windows', 'WebView2 error');
@@ -219,7 +232,7 @@ describe('roadmap automation helpers', () => {
     expect(labels).toContain('type/bug');
 
     const ctx = bots.renderPrContext(bots.loadRoadmap(), ['src/ai.ts'], 'Fixes surrogate boundary');
-    expect(ctx).toContain('morrow-007-ai-fim-context-and-sanitization');
+    expect(ctx).toContain('wrytrove-007-ai-fim-context-and-sanitization');
   });
 
   it('checks --state all and triggers on issue close so solved tasks replenish without duplicates', async () => {
@@ -227,5 +240,7 @@ describe('roadmap automation helpers', () => {
     const yml = readFileSync(resolve('.github/workflows/contributor-queue.yml'), 'utf8');
     expect(yml).toMatch(/gh issue list --state all/);
     expect(yml).toMatch(/issues:\s*\n\s*types:\s*\[closed\]/);
+    expect(yml).toContain('LEGACY_MARKER');
+    expect(yml).toContain('sub("^wrytrove-"; "morrow-")');
   });
 });

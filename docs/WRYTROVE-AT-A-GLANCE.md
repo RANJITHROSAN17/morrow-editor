@@ -1,13 +1,13 @@
-# Morrow at a glance
+# Wrytrove at a glance
 
-![Morrow at a glance: a quiet editor with a folder tree, a writing surface with a minimap, outline/tags/backlinks in one rail, and the promise of recovery, large-file headroom and plain local files](images/morrow-at-a-glance.png)
+![Wrytrove at a glance: a quiet editor with a folder tree, a writing surface with a minimap, outline/tags/backlinks in one rail, and the promise of recovery, large-file headroom and plain local files](images/wrytrove-at-a-glance.png)
 
 *This poster is a diagram, not a screenshot. It is checked in as a single image so a reader can
 grasp the product in one glance before installing anything.*
 
-## What Morrow is
+## What Wrytrove is
 
-Morrow is a small desktop editor for **plain text and Markdown files you already own**. It opens
+Wrytrove is a small desktop editor for **plain text and Markdown files you already own**. It opens
 one or more folders, edits the files in place, and never keeps your writing in a database you
 cannot read. It is built with Tauri 2, CodeMirror 6 and TypeScript, and it is MIT licensed.
 
@@ -25,7 +25,7 @@ It is deliberately *not*:
 | **Open the big file anyway** | People reach for a notepad *because* the other tool refused to open the log. | Bounded native reads, a large-document path in `src/word-stats.ts`, and a minimap that disables itself above 400,000 characters instead of freezing. |
 | **No account, no upload** | You should not have to create an identity to type a sentence. | Plain files, a local-only note index (`src/note-index.ts`), explicit per-session AI consent, and an assistant panel that is off until you turn it on. |
 
-## A day with Morrow
+## A day with Wrytrove
 
 **Morning — capture before you are ready to write.**
 `Ctrl+Alt+N` opens quick capture. One line about the thing you must not forget lands in
@@ -48,12 +48,12 @@ The Notes rail holds three views of the same folder:
 The index is built locally, on demand, and can be cleared from the menu. Nothing is uploaded.
 
 **Evening — trust the save.**
-If a file changed on disk while you were writing, Morrow says so and offers a reload; it does not
+If a file changed on disk while you were writing, Wrytrove says so and offers a reload; it does not
 merge behind your back. Recovery snapshots are opt-in and described honestly as *not a backup*.
 
 ## How this compares
 
-| Capability | Morrow | Obsidian | Typora | Notepad++ / Notepad3 |
+| Capability | Wrytrove | Obsidian | Typora | Notepad++ / Notepad3 |
 | --- | --- | --- | --- | --- |
 | Plain local files | ✅ | ✅ | ✅ | ✅ |
 | Focus / typewriter mode | ✅ built in | ⚠️ plugin or theme | ✅ | ❌ |
@@ -64,7 +64,7 @@ merge behind your back. Recovery snapshots are opt-in and described honestly as 
 | No account, no sync service | ✅ | ✅ | ✅ | ✅ |
 | Cost | free, MIT | free, proprietary | paid | free |
 
-The point of the table is not that Morrow wins every row. It is that no single competitor offers
+The point of the table is not that Wrytrove wins every row. It is that no single competitor offers
 *the writing surface* (focus, typewriter, goal, minimap) **and** *the notes surface* (outline,
 tags, backlinks, daily notes) **and** *the notepad virtues* (instant open, huge files, encoding
 control) in one quiet, account-free window.
@@ -74,10 +74,10 @@ control) in one quiet, account-free window.
 - Everything above is implemented and covered by unit tests, but the Windows build has not been
   exercised end to end by a second person, and no screen-reader audit exists yet.
 - The focus-mode dimming contrast and the announcement of mode changes are tracked as roadmap item
-  `morrow-015-focus-mode-a11y`.
+  `wrytrove-015-focus-mode-a11y`.
 - Quick capture and daily-note writes have re-entrancy and partial-write guards tracked as
-  `morrow-016-capture-and-daily-guards`.
+  `wrytrove-016-capture-and-daily-guards`.
 - Saving an ordinary open tab does not yet refresh the note index; that is
-  `morrow-014-note-index-refresh-on-save`.
+  `wrytrove-014-note-index-refresh-on-save`.
 
 Those three are real gaps, filed as work rather than described as shipped.

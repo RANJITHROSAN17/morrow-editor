@@ -50,10 +50,10 @@ jobs:
 
           EXISTING="$(jq -r '[.[] | select((.state // "" | ascii_downcase) == "open") | select((.body // "") | contains("<!-- roadmap-status -->"))] | sort_by(.number) | .[0].number // empty' /tmp/all-issues.json)"
           if [ -n "$EXISTING" ]; then
-            gh issue edit "$EXISTING" --title "Morrow Editor — Roadmap Status" --body-file /tmp/status.md
+            gh issue edit "$EXISTING" --title "Wrytrove Editor — Roadmap Status" --body-file /tmp/status.md
             echo "Updated rolling status issue #${EXISTING}" >> "$GITHUB_STEP_SUMMARY"
           else
-            URL="$(gh issue create --title "Morrow Editor — Roadmap Status" --body-file /tmp/status.md --label "roadmap")"
+            URL="$(gh issue create --title "Wrytrove Editor — Roadmap Status" --body-file /tmp/status.md --label "roadmap")"
             echo "Created rolling status issue: ${URL}" >> "$GITHUB_STEP_SUMMARY"
           fi
           cat /tmp/status.md >> "$GITHUB_STEP_SUMMARY"

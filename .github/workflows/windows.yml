@@ -59,7 +59,7 @@ jobs:
           }
       - uses: actions/upload-artifact@v7
         with:
-          name: Morrow-windows-x64-unsigned
+          name: Wrytrove-windows-x64-unsigned
           path: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/SHA256SUMS.txt
@@ -78,7 +78,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: Morrow-windows-x64-unsigned
+          name: Wrytrove-windows-x64-unsigned
           path: dist
 
       # The tag gets an installer a normal person can download. Without this the NSIS build is an

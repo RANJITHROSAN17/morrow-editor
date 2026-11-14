@@ -1,4 +1,6 @@
-# Morrow Editor — architectural, competitive and product audit
+# Wrytrove Editor — architectural, competitive and product audit
+
+> **Historical naming note:** product references in this snapshot now use Wrytrove. Original repository URLs, branch names, commit IDs and released artifact filenames are preserved as evidence.
 
 **Audit date:** 13 November 2026 UTC  
 **Repository:** `RANJITHROSAN17/morrow-editor`  
@@ -21,7 +23,7 @@ GitHub stars, forks and issue counts are included only as ecosystem/demand signa
 
 ## 1. Executive verdict
 
-Morrow is a thoughtful **Windows-first, local-first text/code/Markdown editor preview** with unusually explicit safety boundaries for a small project. Its strongest work is not the visual surface; it is the set of boundaries underneath it:
+Wrytrove is a thoughtful **Windows-first, local-first text/code/Markdown editor preview** with unusually explicit safety boundaries for a small project. Its strongest work is not the visual surface; it is the set of boundaries underneath it:
 
 1. native reads and writes are bounded and scope-checked;
 2. direct links/reparse points are rejected in the native paths that matter;
@@ -32,7 +34,7 @@ Morrow is a thoughtful **Windows-first, local-first text/code/Markdown editor pr
 7. recovery failures preserve the last complete snapshot rather than silently replacing it with metadata;
 8. Markdown preview is an inert allowlisted tree rather than document-supplied HTML.
 
-The central problem is not that Morrow lacks clever features. It is that the product is at the point where **preview-quality foundations must become daily-driver guarantees**. A user can already write, browse, search, recover, review and ask optional AI for help. They cannot yet rely on Morrow for the edge cases that make a mature editor trustworthy: very large files, search over live buffers, folder-wide replace, crash-safe draft history, a durable and signed distribution path, measured performance, real screen-reader validation, and a single coherent provider/data-flow model.
+The central problem is not that Wrytrove lacks clever features. It is that the product is at the point where **preview-quality foundations must become daily-driver guarantees**. A user can already write, browse, search, recover, review and ask optional AI for help. They cannot yet rely on Wrytrove for the edge cases that make a mature editor trustworthy: very large files, search over live buffers, folder-wide replace, crash-safe draft history, a durable and signed distribution path, measured performance, real screen-reader validation, and a single coherent provider/data-flow model.
 
 ### The architectural judgment
 
@@ -66,7 +68,7 @@ The strategy is not “be a smaller VS Code.” It is: **be the editor where fil
 | Native surface | Five custom commands: `safe_write`, `take_launch_files`, `workspace_list_directory`, `workspace_read_file`, `workspace_create_entry`, plus Tauri plugins for dialog, filesystem, HTTP, opener, persisted scope and single instance. |
 | Source scale | `src/main.ts` 2,097 lines; `src/workbench.ts` 951; `src-tauri/src/lib.rs` 547 source lines in the audited tree; 7,338 lines across the primary TypeScript/Rust source inventory reported during the audit. |
 | Product version | `0.4.0` preview in `package.json`, Tauri config and UI. The project explicitly labels the installer unsigned and not production-ready. |
-| License | Morrow code is MIT. Competitor implementation code is not assumed reusable; several comparisons below are GPL/AGPL. |
+| License | Wrytrove code is MIT. Competitor implementation code is not assumed reusable; several comparisons below are GPL/AGPL. |
 
 ### 2.2 Commands run against the current tree
 
@@ -92,7 +94,7 @@ The strategy is not “be a smaller VS Code.” It is: **be the editor where fil
 
 ---
 
-## 3. Morrow architecture deep dive
+## 3. Wrytrove architecture deep dive
 
 ### 3.1 System shape
 
@@ -103,20 +105,20 @@ The strategy is not “be a smaller VS Code.” It is: **be the editor where fil
                          │ bounded read/list/create + atomic write    │
                          └──────────────┬──────────────────────────────┘
                                         │ Tauri IPC / plugin APIs
-┌───────────────────────────────────────▼───────────────────────────────────────┐
+┌───────────────────────────────────────▼─────────────────────────────────────────┐
 │ TypeScript/Vite application                                                     │
 │                                                                                 │
-│  MorrowApp (`main.ts`)                                                         │
-│   document model · CodeMirror view · settings · recovery · save/conflicts      │
-│   keyboard/menu routing · AI completion/actions · Markdown host · notes UI     │
+│  WrytroveApp (`main.ts`)                                                        │
+│   document model · CodeMirror view · settings · recovery · save/conflicts       │
+│   keyboard/menu routing · AI completion/actions · Markdown host · notes UI      │
 │                                                                                 │
-│  Workbench (`workbench.ts`)                                                    │
-│   selected roots · lazy tree · Quick Open · folder search · review/Arena UI    │
+│  Workbench (`workbench.ts`)                                                     │
+│   selected roots · lazy tree · Quick Open · folder search · review/Arena UI     │
 │                                                                                 │
 │  Pure/mostly-pure modules                                                       │
 │   encoding · workspace traversal/search · change-review · storage validation    │
-│   AI request framing · Arena transport · bounded JSON · Markdown renderer      │
-│   note parsing/index · outline · formatting · stats/focus/minimap              │
+│   AI request framing · Arena transport · bounded JSON · Markdown renderer       │
+│   note parsing/index · outline · formatting · stats/focus/minimap               │
 └─────────┬─────────────────────────┬──────────────────────────┬──────────────────┘
           │                         │                          │
           ▼                         ▼                          ▼
@@ -130,7 +132,7 @@ The architecture is intentionally **single-user and local-first**. It has no ser
 
 | Module | Responsibility | Strength | Structural concern |
 |---|---|---|---|
-| `src/main.ts` | Owns `MorrowApp`, document records, active CodeMirror view, settings, recovery, save/reload, UI rendering, keyboard routing, AI and notes coordination. | One obvious application lifecycle; easy to follow for a small feature. | At 2,097 lines, every new cross-cutting feature increases coupling and regression surface. DOM selectors, persistence, network orchestration and document mutation are not strongly separated. |
+| `src/main.ts` | Owns `WrytroveApp`, document records, active CodeMirror view, settings, recovery, save/reload, UI rendering, keyboard routing, AI and notes coordination. | One obvious application lifecycle; easy to follow for a small feature. | At 2,097 lines, every new cross-cutting feature increases coupling and regression surface. DOM selectors, persistence, network orchestration and document mutation are not strongly separated. |
 | `src/workbench.ts` | Implements `WorkbenchHost`, folder roots, tree listings, Quick Open, folder search, review dialog, Arena panel and folder-note file operations. | A meaningful first extraction with a narrow-ish host contract; cancellation and generation tokens are present. | 951 lines and a broad host interface still make it a UI controller, not an independent service. Search and Arena are coupled to DOM dialogs. |
 | `src/editor.ts` | CodeMirror 6 state creation and compartments for language, wrapping, indent, spellcheck, focus/typewriter, smart typing and ghost completion. | Correct use of CodeMirror state/compartments; inline completion is a decoration and one-step undoable insertion. | The application still reconstructs editor states in some lifecycle paths; large-document mode and incremental model policy are not defined. |
 | `src/encoding.ts` | Strict UTF-8/BOM/UTF-16 LE/BE decode/encode, line-ending inspection, SHA-256. | Lossless write-back for supported encodings and explicit refusal of invalid/binary-looking data. | No ANSI/legacy code pages, UTF-32, byte-preserving mixed endings or binary/hex mode; hard 20 MiB limit. |
@@ -146,7 +148,7 @@ The architecture is intentionally **single-user and local-first**. It has no ser
 
 ### 3.3 Startup and document lifecycle
 
-1. `MorrowApp` loads and sanitizes settings. Persisted `aiEnabled` is intentionally ignored, so a prior version cannot silently enable AI.
+1. `WrytroveApp` loads and sanitizes settings. Persisted `aiEnabled` is intentionally ignored, so a prior version cannot silently enable AI.
 2. If recovery is enabled, IndexedDB is read and validated. A complete snapshot is restored; a metadata-only quota fallback blocks automatic restore so the older complete snapshot is not mistaken for the latest state.
 3. Clean native restored files are refreshed from disk. Dirty tabs retain the recovery draft and original hash for save-time conflict checking.
 4. If there is no restorable session, editable sample documents are created and marked as samples.
@@ -197,7 +199,7 @@ The product gap is precise: **folder search is saved-file-only, literal, read-on
 - A model must be explicitly enabled for the session; action consent is separate and model-specific; changes go through review.
 - Responses and errors are bounded by byte size; requests have cancellation and timeouts.
 
-**Important privacy qualification:** a loopback destination identifies the transport endpoint, not the ultimate provider. Ollama documents cloud models through its local API. Morrow correctly warns about this in its docs, but the UI does not yet provide a provider capability/route ledger that proves whether a selected model is local-only.
+**Important privacy qualification:** a loopback destination identifies the transport endpoint, not the ultimate provider. Ollama documents cloud models through its local API. Wrytrove correctly warns about this in its docs, but the UI does not yet provide a provider capability/route ledger that proves whether a selected model is local-only.
 
 #### Arena browser/API
 
@@ -206,7 +208,7 @@ The product gap is precise: **folder search is saved-file-only, literal, read-on
 - One or two explicit model requests are possible; comparison is never an invisible fallback and can be separately billable.
 - The fixed endpoint, no-redirect policy, bounded response and selected-text-only payload are tested.
 
-**Derived architecture risk:** local actions, inline completion and Arena have three related but separate policy implementations. This is manageable at the current feature count but becomes a security and UX drift vector as soon as Morrow adds document Q&A, embeddings, providers, streaming or model setup.
+**Derived architecture risk:** local actions, inline completion and Arena have three related but separate policy implementations. This is manageable at the current feature count but becomes a security and UX drift vector as soon as Wrytrove adds document Q&A, embeddings, providers, streaming or model setup.
 
 ### 3.7 Markdown and notes
 
@@ -251,7 +253,7 @@ Friction points:
 
 ## 4. Gold-standard comparison set
 
-The five references were chosen to cover Morrow’s actual design space rather than to create a feature-count contest.
+The five references were chosen to cover Wrytrove’s actual design space rather than to create a feature-count contest.
 
 | Reference | Current GitHub snapshot captured during audit | Why it belongs |
 |---|---:|---|
@@ -261,7 +263,7 @@ The five references were chosen to cover Morrow’s actual design space rather t
 | [MarkText](https://github.com/marktext/marktext) | 63,954 stars; TypeScript/Electron/Vue; MIT; 248 open issues | Closest open-source Markdown-writing benchmark for live preview, focus/typewriter modes, export, themes and a rich but approachable writer surface. |
 | [Joplin](https://github.com/laurent22/joplin) | 57,168 stars; TypeScript; AGPL-3.0-or-later; 668 open issues | Notes/ownership benchmark for a large TypeScript monorepo, local database, sync targets, E2EE, search, renderer, plugins and multi-platform distribution. |
 
-The counts are a snapshot, not a ranking. Competitor implementation code must not be copied into Morrow without a license review; behavior and architecture can be studied and independently implemented.
+The counts are a snapshot, not a ranking. Competitor implementation code must not be copied into Wrytrove without a license review; behavior and architecture can be studied and independently implemented.
 
 ### 4.1 VS Code / Code - OSS
 
@@ -271,13 +273,13 @@ The counts are a snapshot, not a ranking. Competitor implementation code must no
 
 - The architecture supports incremental text models, provider-specific search and asynchronous extension/service activation rather than putting every operation in one renderer callback. That is an architectural scalability signal, not a benchmark claim.
 - The likely cost is the price of breadth: Electron/Node processes, extension hosts, language servers, workbench services, activation, indexing and telemetry/settings machinery all add startup, memory and failure modes. VS Code’s own repository build instructions call for substantial hardware for a full build; that is a contributor-build fact, not a runtime benchmark.
-- Morrow should copy the *seams*—file service, search provider, working-copy/recovery service, capability registry—not the entire product surface.
+- Wrytrove should copy the *seams*—file service, search provider, working-copy/recovery service, capability registry—not the entire product surface.
 
 **UX paradigm.** Workspace-first, command-palette-first, keyboard dense, extensible, with tabs/editors, outline, quick input, diff/review, explicit untrusted-workspace decisions and rich language intelligence. It optimizes for a professional workbench rather than a calm notepad.
 
 **USP.** A universal editor platform: extensions and language tooling turn one shell into a broad development environment.
 
-**Morrow lesson.** Make “current buffer vs saved file vs indexed note” a first-class source concept, and use explicit service contracts before adding more surfaces. Do not adopt the extension marketplace, terminal or debugger merely to match a checklist; those are different trust and maintenance products.
+**Wrytrove lesson.** Make “current buffer vs saved file vs indexed note” a first-class source concept, and use explicit service contracts before adding more surfaces. Do not adopt the extension marketplace, terminal or debugger merely to match a checklist; those are different trust and maintenance products.
 
 ### 4.2 Zed
 
@@ -286,7 +288,7 @@ The counts are a snapshot, not a ranking. Competitor implementation code must no
 **Performance characteristics and bottlenecks.**
 
 - A rope/sum-tree model is suited to edits and viewport operations without repeatedly copying a whole document; a GPU UI and async task system are intended to keep interaction responsive. These are design mechanisms, not proof of a particular latency.
-- Benchmark crates and input-latency surfaces show a stronger performance culture than Morrow currently has. Morrow should adopt measurement and budgets, not infer that a Rust rewrite is required.
+- Benchmark crates and input-latency surfaces show a stronger performance culture than Wrytrove currently has. Wrytrove should adopt measurement and budgets, not infer that a Rust rewrite is required.
 - The trade-off is significant build and maintenance complexity: a large Rust workspace, platform-specific GPU code, language servers, collaboration and AI services create more compile time, binary surface and contributor specialization.
 - AI/model calls, indexing and extension tasks are still potential latency and privacy bottlenecks; “native” does not remove network or model latency.
 
@@ -294,7 +296,7 @@ The counts are a snapshot, not a ranking. Competitor implementation code must no
 
 **USP.** A native high-performance editor that treats collaboration and AI as first-class without giving up a serious code-editing surface.
 
-**Morrow lesson.** Partial acceptance, explicit provider choice, visible AI scope and cancelable background work are worth borrowing. A complete native editor rewrite is not justified by the current evidence; CodeMirror plus a careful large-file path can preserve Morrow’s smaller contributor footprint.
+**Wrytrove lesson.** Partial acceptance, explicit provider choice, visible AI scope and cancelable background work are worth borrowing. A complete native editor rewrite is not justified by the current evidence; CodeMirror plus a careful large-file path can preserve Wrytrove’s smaller contributor footprint.
 
 ### 4.3 Notepad++
 
@@ -310,7 +312,7 @@ The counts are a snapshot, not a ranking. Competitor implementation code must no
 
 **USP.** Decades of trust for opening, editing, searching and saving text on Windows, with a large ecosystem and no account requirement.
 
-**Morrow lesson.** Morrow must eventually match the basic “find/replace/session/encoding/open a difficult file” trust contract. It should not copy GPL code or reproduce plugin sprawl/density. The better response is a calm UI with mature semantics underneath.
+**Wrytrove lesson.** Wrytrove must eventually match the basic “find/replace/session/encoding/open a difficult file” trust contract. It should not copy GPL code or reproduce plugin sprawl/density. The better response is a calm UI with mature semantics underneath.
 
 ### 4.4 MarkText
 
@@ -320,13 +322,13 @@ The counts are a snapshot, not a ranking. Competitor implementation code must no
 
 - Ripgrep and a dedicated editor package are appropriate choices for file search and editing; a separate desktop/main/preload shape gives the renderer less direct authority than a single privileged page.
 - Rich live Markdown, diagrams, math, image handling and a DOM renderer can be more expensive than plain text, especially on large documents. Electron, Vue state and a broad dependency surface increase memory/startup cost. These are derived risks, not measured results from this audit.
-- MarkText explicitly includes performance-inspection scripts, which is a useful process signal for Morrow.
+- MarkText explicitly includes performance-inspection scripts, which is a useful process signal for Wrytrove.
 
 **UX paradigm.** Writing-first and WYSIWYG/live-preview oriented: CommonMark/GFM, themes, source/focus/typewriter modes, formatting shortcuts, images, HTML/PDF output and distraction-free writing.
 
 **USP.** It makes Markdown feel like a normal writing tool without requiring users to think in raw syntax all the time.
 
-**Morrow lesson.** Focus/typewriter modes, outline, export and a richer writer flow are relevant. Morrow’s inert preview is a better security baseline than blindly trusting rendered HTML; any richer mode should be opt-in, local-only and capability-limited.
+**Wrytrove lesson.** Focus/typewriter modes, outline, export and a richer writer flow are relevant. Wrytrove’s inert preview is a better security baseline than blindly trusting rendered HTML; any richer mode should be opt-in, local-only and capability-limited.
 
 ### 4.5 Joplin
 
@@ -342,13 +344,13 @@ The counts are a snapshot, not a ranking. Competitor implementation code must no
 
 **USP.** Ownership plus a broad, portable notes ecosystem and synchronization story.
 
-**Morrow lesson.** Make any note index disposable, local, inspectable and derived from files. Do not add a proprietary database or sync service until Morrow has a clear product decision, conflict model, key-management design and maintainer capacity.
+**Wrytrove lesson.** Make any note index disposable, local, inspectable and derived from files. Do not add a proprietary database or sync service until Wrytrove has a clear product decision, conflict model, key-management design and maintainer capacity.
 
 ---
 
-## 5. Morrow versus the reference set: gap matrix
+## 5. Wrytrove versus the reference set: gap matrix
 
-| Capability | Morrow today | Reference expectation | Severity | Evidence and interpretation | Beyond-best-in-class direction |
+| Capability | Wrytrove today | Reference expectation | Severity | Evidence and interpretation | Beyond-best-in-class direction |
 |---|---|---|---|---|---|
 | Launch/edit/save trust | Explicit hashes and atomic writes; recovery snapshot; no durable autosave journal. | Notepad++/Notepads sessions and mature save behavior; VS Code working-copy/backup services. | P0 | Observed missing journal and documented power-loss/metadata limits. | A local, content-addressed draft journal with a human-readable timeline and one-click verified restore. |
 | Recovery privacy | IndexedDB session contains text/paths and is unencrypted; warning is visible. | Joplin has a designed encryption/sync model; simple editors often have local session files. | P0 | `storage.ts`, `index.html`, `SECURITY.md` and guide state this directly. | Optional OS-key-backed encryption with an explicit threat model, migration and inspectable deletion semantics. |
@@ -357,7 +359,7 @@ The counts are a snapshot, not a ranking. Competitor implementation code must no
 | Search source | Current document regex/replace; workspace saved-file literal search only. | Notepad++ and VS Code normalize project search/replace; VS Code has provider architecture. | P1 | `workspace.ts` and `workbench.ts` explicitly say saved-only. | A source-aware search ledger over live buffers, disk snapshots and note index, with stale hashes and per-file diff transactions. |
 | Folder-wide replace | Absent. | Notepad++/VS Code/Zed provide mature replacement workflows. | P1 | No workspace replace command or API. | Preview a complete change set, apply only hash-matching files, support per-hunk acceptance and atomic rollback journal. |
 | Compare/split | Selection review diff exists; no two-file compare/split editor. | Notepads, Notepad++ ecosystem, VS Code and Zed set this expectation. | P1 | Existing `change-review.ts` is selection-based. | A reusable review engine for selection, file pair and multi-file plans with identical stale-safety semantics. |
-| Application modularity | One large `MorrowApp`; Workbench is a second controller. | VS Code services; Zed crates/modules. | P1 | LOC and host interface observed. | A small evented document/file/recovery/search/AI service graph without a rewrite. |
+| Application modularity | One large `WrytroveApp`; Workbench is a second controller. | VS Code services; Zed crates/modules. | P1 | LOC and host interface observed. | A small evented document/file/recovery/search/AI service graph without a rewrite. |
 | AI provider model | Ollama, selection actions and Arena have separate transports/consent/payload rules. | Zed and Continue normalize provider choice/capabilities. | P1 | Separate `ai.ts`, `ai-actions.ts`, `arena.ts`. | Capability-based provider registry plus an egress manifest and exact payload preview. |
 | AI grounding | Selection actions and Arena; no ask-this-document citations or workspace Q&A. | Open Notebook/Joplin-adjacent AI projects and modern editors set context expectations. | P2 | No citation/index retrieval path in current source. | Local retrieval with line/byte/hash citations and “not found” as a valid answer. |
 | Note graph lifecycle | Tags, links, backlinks, orphans and index exist; refresh/coordination issues remain. | Joplin/Obsidian/Logseq make organization central. | P2 | Existing open issue #41 covers refresh; no rename transaction. | A filesystem-derived graph with ambiguity-first resolution, rename preview and disposable event-sourced index. |
@@ -365,7 +367,7 @@ The counts are a snapshot, not a ranking. Competitor implementation code must no
 | Distribution | Unsigned NSIS preview; no verified update channel or package-manager manifest. | Notepads/Notepad Next/MarkText/Joplin have established distribution/update paths; Notepad++ signs releases. | P0 | README, workflow and user guide. | Signed, reproducible, SBOM-attested updates with rollback and user-visible provenance. |
 | Accessibility | Automated keyboard/contrast checks and ARIA work; no full Narrator/NVDA/scale audit. | Mature desktop products publish broad platform support; MarkText/Notepads have localization/accessibility expectations. | P1 | 54 E2E inventory but browser binary unavailable locally; docs say audit outstanding. | Accessibility as task contracts in CI plus a privacy-preserving manual test kit and issue log. |
 | Performance discipline | Some local caps and one Quick Open micro-benchmark; no startup/memory/edit budget in CI. | Zed has benchmark crates; MarkText exposes performance inspection; VS Code has extensive profiling. | P1 | No `performance.mark`, benchmark workflow or release thresholds. | Synthetic workload suite with medians/ranges, budget diffs and locally inspectable profiles. |
-| LSP/extensions/terminal | Deliberately absent. | VS Code/Zed provide them. | P2 / defer | README explicitly says Morrow is not a full IDE. | If demand proves real, a brokered capability sandbox—not arbitrary plugin code in the privileged webview. |
+| LSP/extensions/terminal | Deliberately absent. | VS Code/Zed provide them. | P2 / defer | README explicitly says Wrytrove is not a full IDE. | If demand proves real, a brokered capability sandbox—not arbitrary plugin code in the privileged webview. |
 | Sync/collaboration | Deliberately absent; files are user-owned. | Joplin/AppFlowy emphasize sync; Zed collaboration. | Defer | Product docs say not to build yet. | If ever added, user-owned Git/folder sync with conflict provenance before a hosted service. |
 
 ### Existing issue overlap
@@ -386,7 +388,7 @@ The opportunity is not to out-feature VS Code. It is to make the safety and loca
 
 ### 6.1 Verifiable local-first
 
-A loopback URL, an “offline” label or an unsigned hash is not enough. Morrow should expose a **data-flow ledger** for each operation:
+A loopback URL, an “offline” label or an unsigned hash is not enough. Wrytrove should expose a **data-flow ledger** for each operation:
 
 ```text
 intent → selected source revision → exact bytes/chars → provider route → model
@@ -439,7 +441,7 @@ A document should never silently escalate from profile 1 to profile 2. This is a
 
 #### Release gate A — trust baseline
 
-Do not call Morrow a production daily driver until the project can demonstrate:
+Do not call Wrytrove a production daily driver until the project can demonstrate:
 
 - forced termination during typing restores the newest complete journal entry;
 - disk copy and draft are distinguishable and compared before recovery;
@@ -495,7 +497,7 @@ The following drafts are ready to paste into GitHub after maintainer review. The
   4. When a Windows code-signing certificate is available, sign the NSIS executable with `signtool` and timestamp it; fail the tagged release if signing is configured but absent.
   5. Add a `winget` manifest or documented package-manager path, and publish SHA-256 plus signature/provenance verification instructions.
   6. Do not add an auto-updater until update metadata is signed, rollback behavior is tested and the user can opt out.
-- **Beyond-best-in-class differentiator:** A normal user can inspect not only a checksum but the source commit, build inputs, dependency inventory and signature chain, without an account or Morrow telemetry.
+- **Beyond-best-in-class differentiator:** A normal user can inspect not only a checksum but the source commit, build inputs, dependency inventory and signature chain, without an account or Wrytrove telemetry.
 - **Acceptance criteria / Definition of Done:**
   - [ ] A `v*` tag produces a release containing installer, checksum, SBOM and provenance attestation.
   - [ ] Signed mode verifies the publisher and timestamp on a clean consumer-Windows VM.
@@ -508,7 +510,7 @@ The following drafts are ready to paste into GitHub after maintainer review. The
 
 - **Category:** `Architectural Refactor`
 - **Priority:** `P0 - Critical`
-- **Why it matters / benchmark reference:** Morrow’s IndexedDB recovery is carefully validated and quota-aware, but it rewrites a whole session and is not a durable autosave journal. Notepad++/Notepads-style session restore is the minimum expectation; VS Code has dedicated working-copy/backup services. Recovery is the difference between a preview and a tool trusted with ordinary work.
+- **Why it matters / benchmark reference:** Wrytrove’s IndexedDB recovery is carefully validated and quota-aware, but it rewrites a whole session and is not a durable autosave journal. Notepad++/Notepads-style session restore is the minimum expectation; VS Code has dedicated working-copy/backup services. Recovery is the difference between a preview and a tool trusted with ordinary work.
 - **Exact technical design:**
   1. Add a pure `src/recovery-journal.ts` format with versioned manifest records: document ID/path token, base disk hash, sequence, timestamp, encoding, line ending, cursor and content chunks.
   2. Store append-only journal chunks in IndexedDB object stores (`journal`, `manifests`, `complete-marker`) rather than replacing a single large object.
@@ -530,7 +532,7 @@ The following drafts are ready to paste into GitHub after maintainer review. The
 
 - **Category:** `Bug/Vulnerability Fix`
 - **Priority:** `P0 - Critical`
-- **Why it matters / benchmark reference:** `SECURITY.md` correctly states that recovery is unencrypted and Tauri persisted scope may outlive the visible folder. “Local-first” is not equivalent to “private from another process/user profile.” Joplin’s E2EE/keychain model demonstrates that at-rest protection is a product feature, while Morrow’s plain-file positioning requires an opt-in design rather than a mandatory vault.
+- **Why it matters / benchmark reference:** `SECURITY.md` correctly states that recovery is unencrypted and Tauri persisted scope may outlive the visible folder. “Local-first” is not equivalent to “private from another process/user profile.” Joplin’s E2EE/keychain model demonstrates that at-rest protection is a product feature, while Wrytrove’s plain-file positioning requires an opt-in design rather than a mandatory vault.
 - **Exact technical design:**
   1. Add a privacy settings model with three independent controls: recovery enabled, recovery encryption enabled, and remember selected-file/folder access.
   2. On Windows, use an OS-protected key (DPAPI/credential-protected secret through a small Rust command) to wrap a random AES-256-GCM journal key; keep plaintext keys out of localStorage/IndexedDB.
@@ -544,18 +546,18 @@ The following drafts are ready to paste into GitHub after maintainer review. The
   - [ ] Revoking a closed-folder lease prevents subsequent native reads/writes through that scope.
   - [ ] Open documents remain usable until closed, then their lease is released.
   - [ ] Tests cover restart, key rotation/version migration, failed deletion and revoked scope.
-  - [ ] Documentation distinguishes file ownership, OS access controls and optional Morrow encryption.
+  - [ ] Documentation distinguishes file ownership, OS access controls and optional Wrytrove encryption.
 
 ## AUD-04 — Close the native save durability and race gaps
 
 - **Category:** `Bug/Vulnerability Fix`
 - **Priority:** `P0 - Critical`
-- **Why it matters / benchmark reference:** Morrow already has better-than-average hash checks and atomic temp replacement, but `src-tauri/src/lib.rs` explicitly admits a parent-directory race and unverified Windows/network/ACL/power-loss behavior. A mature text editor’s primary security promise is not silently losing or replacing a file.
+- **Why it matters / benchmark reference:** Wrytrove already has better-than-average hash checks and atomic temp replacement, but `src-tauri/src/lib.rs` explicitly admits a parent-directory race and unverified Windows/network/ACL/power-loss behavior. A mature text editor’s primary security promise is not silently losing or replacing a file.
 - **Exact technical design:**
   1. Introduce a Rust `SaveTransaction` result with stages: `Verified`, `TempWritten`, `TempFlushed`, `TargetRevalidated`, `Committed`, `RollbackRequired`.
   2. Revalidate target identity immediately before replacement using file ID/volume identity where Windows APIs permit, plus expected hash and size; reject a changed identity rather than force-replacing by path.
   3. Use platform-specific replace semantics that preserve the original on failure and document when directory flush is unavailable.
-  4. Add optional backup-to-sibling (`.morrow-backup`) only when the user enables it; never leave hidden backups without a retention policy.
+  4. Add optional backup-to-sibling (`.wrytrove-backup`) only when the user enables it; never leave hidden backups without a retention policy.
   5. Preserve/restore ACL and file metadata where safe; explicitly report metadata not preserved.
   6. Add an integration harness that mutates/renames/replaces the target between each stage, plus consumer-Windows tests for read-only/network paths.
 - **Beyond-best-in-class differentiator:** The save dialog can show a machine-readable transaction outcome and offer “save as copy / compare / retry” instead of reducing every failure to a generic overwrite prompt.
@@ -571,7 +573,7 @@ The following drafts are ready to paste into GitHub after maintainer review. The
 
 - **Category:** `Feature Addition`
 - **Priority:** `P1 - High`
-- **Why it matters / benchmark reference:** Notepad++’s documented search behavior, VS Code’s search service and Zed’s search/worktree architecture establish project search as a core editor operation. Morrow currently searches saved files only, literal text only and read-only. Users can otherwise find a string in the editor and fail to find the unsaved version in the folder.
+- **Why it matters / benchmark reference:** Notepad++’s documented search behavior, VS Code’s search service and Zed’s search/worktree architecture establish project search as a core editor operation. Wrytrove currently searches saved files only, literal text only and read-only. Users can otherwise find a string in the editor and fail to find the unsaved version in the folder.
 - **Exact technical design:**
   1. Add a `SearchSource` abstraction: `buffer`, `disk`, `note-index`; each result carries source revision/hash and root-relative path.
   2. Snapshot open CodeMirror documents without reading disk, deduplicate a native file when both buffer and disk are in scope, and let the user choose `Open buffers`, `Saved files` or `Both`.
@@ -612,14 +614,14 @@ The following drafts are ready to paste into GitHub after maintainer review. The
 
 - **Category:** `Feature Addition`
 - **Priority:** `P1 - High`
-- **Why it matters / benchmark reference:** Morrow already has the safest interaction primitive in the codebase: capture a target, calculate a bounded diff, reject stale/no-op changes and apply one isolated undo step. Notepads ships a diff viewer; Notepad++ users rely on compare workflows; VS Code/Zed make side-by-side review normal. Morrow currently limits that safety model to pasted/AI selection replacement.
+- **Why it matters / benchmark reference:** Wrytrove already has the safest interaction primitive in the codebase: capture a target, calculate a bounded diff, reject stale/no-op changes and apply one isolated undo step. Notepads ships a diff viewer; Notepad++ users rely on compare workflows; VS Code/Zed make side-by-side review normal. Wrytrove currently limits that safety model to pasted/AI selection replacement.
 - **Exact technical design:**
   1. Extract a generic `ReviewPlan` model from `change-review.ts`: source identity, before hash, after text/bytes, hunks, line summary, target revision and apply policy.
   2. Add file-pair compare with read-only left/right panes and optional merge target; use existing `diff` dependency and bounded line/token diff.
   3. Add a plan viewer for replace-in-files and AI multi-file proposals; apply per hunk or all hash-valid hunks.
   4. Recheck CodeMirror revision and disk hash immediately before apply. Every applied plan becomes one undo group per document and a journal entry.
   5. Keep selection review and file review on the same UI language: before/after, stale, reject, apply, undo.
-- **Beyond-best-in-class differentiator:** Morrow can make every mutation—from a one-line AI rewrite to a multi-file replace—look and behave like the same user-owned, reversible transaction.
+- **Beyond-best-in-class differentiator:** Wrytrove can make every mutation—from a one-line AI rewrite to a multi-file replace—look and behave like the same user-owned, reversible transaction.
 - **Acceptance criteria / Definition of Done:**
   - [ ] Two selected files can be compared without changing either file.
   - [ ] A user can accept/reject individual hunks and see line summaries.
@@ -628,11 +630,11 @@ The following drafts are ready to paste into GitHub after maintainer review. The
   - [ ] Undo returns the document to its exact pre-apply text in one logical step.
   - [ ] Existing AI/pasted-change E2E tests continue to pass through the generalized engine.
 
-## AUD-08 — Extract document, file, recovery and command services from `MorrowApp`
+## AUD-08 — Extract document, file, recovery and command services from `WrytroveApp`
 
 - **Category:** `Architectural Refactor`
 - **Priority:** `P1 - High`
-- **Why it matters / benchmark reference:** `main.ts` is 2,097 lines and holds unrelated state machines; `workbench.ts` is another 951-line UI coordinator. VS Code’s service interfaces and Zed’s crates demonstrate the long-term value of seams between text model, file service, search and UI. Morrow should not copy their scale, but it should stop making every new feature edit the same controller.
+- **Why it matters / benchmark reference:** `main.ts` is 2,097 lines and holds unrelated state machines; `workbench.ts` is another 951-line UI coordinator. VS Code’s service interfaces and Zed’s crates demonstrate the long-term value of seams between text model, file service, search and UI. Wrytrove should not copy their scale, but it should stop making every new feature edit the same controller.
 - **Exact technical design:**
   1. Define pure/domain interfaces under `src/services/`: `DocumentStore`, `FileService`, `RecoveryService`, `SearchService`, `AiService`, `NoteIndexService`.
   2. Move `Doc` lifecycle, revision/dirty/hash transitions and save conflict decisions into a platform-neutral `DocumentStore` tested without DOM.
@@ -653,7 +655,7 @@ The following drafts are ready to paste into GitHub after maintainer review. The
 
 - **Category:** `Architectural Refactor`
 - **Priority:** `P1 - High`
-- **Why it matters / benchmark reference:** Zed and Continue make provider/model selection a product concern. Morrow’s `ai.ts`, `ai-actions.ts` and `arena.ts` each have sound local safeguards, but future streaming, citations, embeddings or providers would otherwise duplicate consent and payload rules.
+- **Why it matters / benchmark reference:** Zed and Continue make provider/model selection a product concern. Wrytrove’s `ai.ts`, `ai-actions.ts` and `arena.ts` each have sound local safeguards, but future streaming, citations, embeddings or providers would otherwise duplicate consent and payload rules.
 - **Exact technical design:**
   1. Add `src/ai-provider.ts` types: `AiCapability`, `AiProviderDescriptor`, `AiRequest`, `AiPayloadPreview`, `AiResponse`, `AiRouteState`.
   2. Implement adapters for current Ollama completion/action and Arena ask/edit; preserve exact endpoints and no-redirect behavior.
@@ -661,7 +663,7 @@ The following drafts are ready to paste into GitHub after maintainer review. The
   4. Render a shared preflight component showing provider, model, destination, exact source scope, size, cost/account warning and whether local-only routing is proven.
   5. Keep consent session-only and keyed by provider/model/capability; changing any of those asks again.
   6. Emit a local ephemeral egress record with hashes and metadata, never raw content or credentials; allow “copy redacted diagnostics.”
-- **Beyond-best-in-class differentiator:** Instead of a vague privacy badge, Morrow can show a request receipt that proves what it intended to send and what it cannot prove about the provider’s downstream route.
+- **Beyond-best-in-class differentiator:** Instead of a vague privacy badge, Wrytrove can show a request receipt that proves what it intended to send and what it cannot prove about the provider’s downstream route.
 - **Acceptance criteria / Definition of Done:**
   - [ ] Inline completion, selection actions and Arena all use the same typed preflight/consent contract.
   - [ ] No request can be sent without an explicit capability and source revision.
@@ -674,7 +676,7 @@ The following drafts are ready to paste into GitHub after maintainer review. The
 
 - **Category:** `Performance Optimization`
 - **Priority:** `P1 - High`
-- **Why it matters / benchmark reference:** “Fast and lightweight” is an expectation from Notepad++/Notepads, a design goal of Zed, and a profiling concern in MarkText. Morrow currently has safety caps and one Quick Open micro-benchmark but no release-level cold-start, memory, edit-latency or search budget.
+- **Why it matters / benchmark reference:** “Fast and lightweight” is an expectation from Notepad++/Notepads, a design goal of Zed, and a profiling concern in MarkText. Wrytrove currently has safety caps and one Quick Open micro-benchmark but no release-level cold-start, memory, edit-latency or search budget.
 - **Exact technical design:**
   1. Add synthetic fixtures under an ignored/external benchmark directory: 1, 5, 20, 100 and 500 MiB text; 5,000-file workspace; Unicode/long-line/Markdown fixtures.
   2. Add a `scripts/benchmark.mjs`/Playwright harness that records cold start to interactive, first keystroke, tab switch, open, save, search, preview update and close.
@@ -714,7 +716,7 @@ The following drafts are ready to paste into GitHub after maintainer review. The
 
 - **Category:** `Performance Optimization`
 - **Priority:** `P1 - High`
-- **Why it matters / benchmark reference:** Morrow already has a bounded disposable index—an excellent local-first choice—but the open #41 issue shows that changes can make the tag/backlink view stale. Joplin/Obsidian-like note workflows require users to trust that navigation reflects current files; a full rescan after every save will not scale.
+- **Why it matters / benchmark reference:** Wrytrove already has a bounded disposable index—an excellent local-first choice—but the open #41 issue shows that changes can make the tag/backlink view stale. Joplin/Obsidian-like note workflows require users to trust that navigation reflects current files; a full rescan after every save will not scale.
 - **Exact technical design:**
   1. Extend `NoteIndex` records with source byte hash, file size, mtime/file identity where available, parser version and index state.
   2. Add an event-driven queue: open-folder change, save, create, delete, rename and external-change detection enqueue affected paths; coalesce bursts.
@@ -735,7 +737,7 @@ The following drafts are ready to paste into GitHub after maintainer review. The
 
 - **Category:** `Feature Addition`
 - **Priority:** `P2 - Strategic Enhancement`
-- **Why it matters / benchmark reference:** Open Notebook-like products demonstrate demand for source-grounded Q&A; Zed/Continue show context selection is now an AI UX concern. Morrow’s current selection actions are safer than an agent but do not answer “what does this document say?” without copy/paste.
+- **Why it matters / benchmark reference:** Open Notebook-like products demonstrate demand for source-grounded Q&A; Zed/Continue show context selection is now an AI UX concern. Wrytrove’s current selection actions are safer than an agent but do not answer “what does this document say?” without copy/paste.
 - **Exact technical design:**
   1. Add a read-only `ask-document` capability to the provider registry from AUD-09.
   2. Chunk the active document by line boundaries with bounded overlap; store chunk ID, line range, UTF-8 byte range, source document ID/revision and SHA-256.
@@ -756,7 +758,7 @@ The following drafts are ready to paste into GitHub after maintainer review. The
 
 - **Category:** `Feature Addition`
 - **Priority:** `P2 - Strategic Enhancement`
-- **Why it matters / benchmark reference:** MarkText and Joplin set expectations for richer Markdown, math, diagrams and export. Morrow’s current inert preview is safer but intentionally omits active links, images, TeX rendering and HTML/PDF export. The correct response is not to weaken the default renderer.
+- **Why it matters / benchmark reference:** MarkText and Joplin set expectations for richer Markdown, math, diagrams and export. Wrytrove’s current inert preview is safer but intentionally omits active links, images, TeX rendering and HTML/PDF export. The correct response is not to weaken the default renderer.
 - **Exact technical design:**
   1. Keep the current closed `PreviewNode` profile as the default and security baseline.
   2. Add an explicit `Local resources` profile backed by a sanitizer (DOMPurify or a pure allowlisted renderer), no scripts/event handlers, no external network, and a local asset resolver limited to the selected workspace scope.
@@ -776,7 +778,7 @@ The following drafts are ready to paste into GitHub after maintainer review. The
 
 - **Category:** `Feature Addition`
 - **Priority:** `P2 - Strategic Enhancement`
-- **Why it matters / benchmark reference:** Morrow’s ambiguity-aware wikilink resolution is safer than guessing, while Joplin/Obsidian-like note systems make links/backlinks a core navigation promise. The current plain-file model has no safe rename/move workflow that previews references and preserves portability.
+- **Why it matters / benchmark reference:** Wrytrove’s ambiguity-aware wikilink resolution is safer than guessing, while Joplin/Obsidian-like note systems make links/backlinks a core navigation promise. The current plain-file model has no safe rename/move workflow that previews references and preserves portability.
 - **Exact technical design:**
   1. Add a note operation planner that scans the disposable index and produces a list of affected source files, line ranges and proposed `[[target]]` replacements.
   2. Use native `workspace_create_entry`/`safe_write` and expected hashes; stage the new path, write reviewed link changes, then remove the old path only after all writes succeed.
@@ -795,7 +797,7 @@ The following drafts are ready to paste into GitHub after maintainer review. The
 
 - **Category:** `Architectural Refactor`
 - **Priority:** `P2 - Strategic Enhancement`
-- **Why it matters / benchmark reference:** VS Code and Zed win developer workflows through language servers/extensions, but Morrow explicitly does not provide them. The risk is not merely implementation work: project files can cause tool startup, network access, process execution and supply-chain exposure.
+- **Why it matters / benchmark reference:** VS Code and Zed win developer workflows through language servers/extensions, but Wrytrove explicitly does not provide them. The risk is not merely implementation work: project files can cause tool startup, network access, process execution and supply-chain exposure.
 - **Exact technical design:**
   1. Begin with a discovery/decision document and two-language user study; do not ship a runtime in the first PR.
   2. If approved, add a Rust `ToolBroker` that starts only user-selected executables, with workspace trust, explicit command/path, environment allowlist, no network by default, stop/restart, stdout/stderr caps and CPU/time limits.
@@ -814,7 +816,7 @@ The following drafts are ready to paste into GitHub after maintainer review. The
 
 - **Category:** `Feature Addition`
 - **Priority:** `P2 - Strategic Enhancement`
-- **Why it matters / benchmark reference:** Notepads documents RTL and localization contributions; MarkText publishes many translations; VS Code and Joplin treat localization and keybindings as platform-scale concerns. Morrow already has many shortcuts, menus and a compact layout, but strings and bindings are mostly hard-coded.
+- **Why it matters / benchmark reference:** Notepads documents RTL and localization contributions; MarkText publishes many translations; VS Code and Joplin treat localization and keybindings as platform-scale concerns. Wrytrove already has many shortcuts, menus and a compact layout, but strings and bindings are mostly hard-coded.
 - **Exact technical design:**
   1. Extract user-facing strings to typed locale resources with fallback to English; keep security/consent strings versioned and reviewable.
   2. Add a keybinding registry mapping command IDs to default chords and conflict diagnostics; persist only sanitized command/chord data.
@@ -833,14 +835,14 @@ The following drafts are ready to paste into GitHub after maintainer review. The
 
 - **Category:** `Performance Optimization`
 - **Priority:** `P2 - Strategic Enhancement`
-- **Why it matters / benchmark reference:** Zed/Continue make model/provider choice visible; Morrow’s AI actions are currently unit-tested with mocked transport, while a real model response on Windows remains unverified. Without an evaluation harness, model selection and prompt changes will be driven by anecdotes.
+- **Why it matters / benchmark reference:** Zed/Continue make model/provider choice visible; Wrytrove’s AI actions are currently unit-tested with mocked transport, while a real model response on Windows remains unverified. Without an evaluation harness, model selection and prompt changes will be driven by anecdotes.
 - **Exact technical design:**
   1. Add 30–50 synthetic fixtures across prose grammar, Markdown, code explanation, formatting preservation, prompt-injection text, Unicode and no-op cases.
   2. Define expected invariants rather than only exact answers: no invented facts for bounded rewrite actions, delimiters treated as data, output limit, no unintended fence removal, citation validity when applicable.
   3. Run against injected fake providers in CI and optionally against a user-supplied local Ollama model from a manual command; never download a model or call Arena in CI.
   4. Record model ID, quantization/hardware entered by the user, latency, output size, invariant pass/fail and human acceptance labels only when explicitly supplied.
   5. Publish aggregate fixture results, not prompts/responses by default; support a local redacted report.
-- **Beyond-best-in-class differentiator:** Users can compare local models with their own synthetic/private fixtures without Morrow collecting prompts, documents or usage telemetry.
+- **Beyond-best-in-class differentiator:** Users can compare local models with their own synthetic/private fixtures without Wrytrove collecting prompts, documents or usage telemetry.
 - **Acceptance criteria / Definition of Done:**
   - [ ] CI covers transport/policy invariants with no network.
   - [ ] Manual local run clearly distinguishes mocked, local-model and cloud results.
@@ -854,12 +856,12 @@ The following drafts are ready to paste into GitHub after maintainer review. The
 
 The backlog is actionable, but several product choices cannot be inferred from source code:
 
-1. Is Morrow primarily a **calm text editor with a light notes layer**, or a **plain-file notes product that also edits code**?
+1. Is Wrytrove primarily a **calm text editor with a light notes layer**, or a **plain-file notes product that also edits code**?
 2. Is Windows-only acceptable through 1.0, or should browser/Linux contributors eventually become supported users rather than just contributors?
 3. Will the project fund code signing and a verified update channel, or remain a clearly labelled unsigned research preview?
 4. Is encrypted recovery opt-in, mandatory for sensitive work, or intentionally delegated to OS disk encryption?
 5. Is “your files, your sync” a permanent positioning decision, or is user-owned Git/folder sync a future product?
-6. Is cloud AI BYO-key only, and should the product ever provide a paid Morrow service?
+6. Is cloud AI BYO-key only, and should the product ever provide a paid Wrytrove service?
 7. Which two user personas define the large-file and LSP decisions?
 8. How much maintainer capacity can be committed to a native tool broker or extension API without undermining the local-first core?
 
@@ -869,7 +871,7 @@ The safe default answers are: keep plain files, keep an AI-free path, do not add
 
 ## 9. Sources and inspected paths
 
-### Morrow source and documentation
+### Wrytrove source and documentation
 
 - [`src/main.ts`](../src/main.ts) — application lifecycle, document model, recovery, save/conflict, UI and AI orchestration.
 - [`src/workbench.ts`](../src/workbench.ts) — workspace, Quick Open, search, review and Arena workflows.

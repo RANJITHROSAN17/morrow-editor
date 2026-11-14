@@ -1,6 +1,6 @@
 # The contributor queue
 
-Morrow keeps a **small** number of fully specified `good first issue` tasks open, and a bot keeps it
+Wrytrove keeps a **small** number of fully specified `good first issue` tasks open, and a bot keeps it
 stocked from a manifest a human reviewed. This document is the human side of that loop.
 
 ## Why small
@@ -70,7 +70,7 @@ leaving the schedule to do the rest.
 
 ## There is deliberately only one filing loop
 
-Morrow has no `scripts/growth.js` and no growth workflow — unlike the sibling `Pinch` repo, where
+Wrytrove has no `scripts/growth.js` and no growth workflow — unlike the sibling `Pinch` repo, where
 this manifest came from. Two filing loops means two queues and a breached cap, so if a growth bot
 is ever added here, it must **not** create issues. Let it research and annotate; all issue
 creation stays in the reviewed manifest above.

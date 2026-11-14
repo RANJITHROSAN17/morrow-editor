@@ -22,7 +22,9 @@ export interface GoalState {
   baselines: Record<string, number>;
 }
 
-export const GOAL_KEY = 'morrow.goal.v1';
+export const GOAL_KEY = 'wrytrove.goal.v1';
+/** Read-only compatibility for goals saved before the Wrytrove rename. */
+export const LEGACY_GOAL_KEY = 'morrow.goal.v1';
 export const MAX_TRACKED_DOCS = 200;
 
 export function emptyGoalState(today: string, target = 0): GoalState {
@@ -46,6 +48,20 @@ export function sanitizeGoalState(value: unknown, today: string): GoalState {
     }
   }
   return { version: 1, date, words, target, baselines };
+}
+
+/** Load the current goal, falling back to the pre-rename key without writing during read. */
+export function loadGoalState(): unknown {
+  try {
+    const raw = localStorage.getItem(GOAL_KEY) ?? localStorage.getItem(LEGACY_GOAL_KEY);
+    return raw === null ? null : JSON.parse(raw);
+  } catch { return null; }
+}
+
+/** Persist under the current brand. A goal is optional, so storage failure must not block editing. */
+export function saveGoalState(state: GoalState): boolean {
+  try { localStorage.setItem(GOAL_KEY, JSON.stringify(state)); return true; }
+  catch { return false; }
 }
 
 export class DailyGoalTracker {

@@ -23,7 +23,7 @@ fn collect_launch_files(app: &tauri::AppHandle, args: Vec<String>, cwd: &str) {
         if let Some(queue) = app.try_state::<LaunchQueue>() {
             if let Ok(mut files) = queue.0.lock() { files.extend(accepted); }
         }
-        let _ = app.emit("morrow-open-files", ());
+        let _ = app.emit("wrytrove-open-files", ());
     }
 }
 
@@ -75,23 +75,23 @@ fn atomic_write(path: &Path, data: &[u8], expected: &str, force: bool) -> Result
     };
     if !force {
         match expected {
-            ExpectedVersion::Absent if metadata.is_some() => return Err("MORROW_FILE_CHANGED: destination already exists".into()),
+            ExpectedVersion::Absent if metadata.is_some() => return Err("WRYTROVE_FILE_CHANGED: destination already exists".into()),
             ExpectedVersion::Absent => {},
             ExpectedVersion::Hash(hash) => {
-                if metadata.is_none() { return Err("MORROW_FILE_CHANGED: file no longer exists".into()); }
+                if metadata.is_none() { return Err("WRYTROVE_FILE_CHANGED: file no longer exists".into()); }
                 if metadata.as_ref().is_some_and(|meta| meta.len() > MAX_FILE_BYTES as u64) {
-                    return Err("MORROW_FILE_CHANGED: the file grew beyond the safety limit".into());
+                    return Err("WRYTROVE_FILE_CHANGED: the file grew beyond the safety limit".into());
                 }
                 // Bounded and no-follow read, including if the file grows after stat.
                 let bytes = bounded_read(path, MAX_FILE_BYTES)
-                    .map_err(|_| "MORROW_FILE_CHANGED: cannot verify the file on disk".to_string())?;
+                    .map_err(|_| "WRYTROVE_FILE_CHANGED: cannot verify the file on disk".to_string())?;
                 let current = sha256_hex(&bytes);
-                if current != hash { return Err("MORROW_FILE_CHANGED: file differs from the version you opened".into()); }
+                if current != hash { return Err("WRYTROVE_FILE_CHANGED: file differs from the version you opened".into()); }
             }
         }
     }
     let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).ok_or("No parent directory for the selected file.")?;
-    let mut temporary = tempfile::Builder::new().prefix(".morrow-").tempfile_in(parent)
+    let mut temporary = tempfile::Builder::new().prefix(".wrytrove-").tempfile_in(parent)
         .map_err(|err| format!("Cannot create a temporary file beside the destination: {err}"))?;
     temporary.write_all(data).map_err(|err| format!("Cannot write file: {err}"))?;
     temporary.as_file().sync_all().map_err(|err| format!("Cannot flush file to disk: {err}"))?;
@@ -101,7 +101,7 @@ fn atomic_write(path: &Path, data: &[u8], expected: &str, force: bool) -> Result
     if !force && expected == ExpectedVersion::Absent {
         // Also refuse to overwrite a file created after the first existence check.
         temporary.persist_noclobber(path).map_err(|err| {
-            if err.error.kind() == std::io::ErrorKind::AlreadyExists { "MORROW_FILE_CHANGED: destination now exists".to_string() }
+            if err.error.kind() == std::io::ErrorKind::AlreadyExists { "WRYTROVE_FILE_CHANGED: destination now exists".to_string() }
             else { format!("Cannot create the selected file: {}", err.error) }
         })?;
     } else {
@@ -124,15 +124,15 @@ async fn safe_write(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> 
     let header = |key: &str| -> Result<String, String> {
         request.headers().get(key).and_then(|h| h.to_str().ok()).map(str::to_owned).ok_or_else(|| format!("Missing {key} header."))
     };
-    let encoded = header("x-morrow-path")?;
+    let encoded = header("x-wrytrove-path")?;
     let path = PathBuf::from(percent_decode_str(&encoded).decode_utf8().map_err(|_| "Invalid file path encoding.")?.into_owned());
     if !path.is_absolute() || path.components().any(|part| matches!(part, std::path::Component::ParentDir)) {
         return Err("Invalid file path.".into());
     }
-    let expected = header("x-morrow-expected")?;
+    let expected = header("x-wrytrove-expected")?;
     parse_expected(&expected)?;
-    let force = parse_force(&header("x-morrow-force")?)?;
-    if !app.fs_scope().is_allowed(&path) { return Err("This file has not been selected for access in Morrow.".into()); }
+    let force = parse_force(&header("x-wrytrove-force")?)?;
+    if !app.fs_scope().is_allowed(&path) { return Err("This file has not been selected for access in Wrytrove.".into()); }
     tauri::async_runtime::spawn_blocking(move || atomic_write(&path, &data, &expected, force))
         .await.map_err(|err| format!("Save task failed: {err}"))?
 }
@@ -205,7 +205,7 @@ fn bounded_read(path: &Path, max_bytes: usize) -> Result<Vec<u8>, String> {
 #[tauri::command]
 async fn workspace_list_directory(app: tauri::AppHandle, path: String) -> Result<serde_json::Value, String> {
     let path = PathBuf::from(path);
-    if !app.fs_scope().is_allowed(&path) { return Err("This folder has not been selected for access in Morrow.".into()); }
+    if !app.fs_scope().is_allowed(&path) { return Err("This folder has not been selected for access in Wrytrove.".into()); }
     tauri::async_runtime::spawn_blocking(move || bounded_directory(&path)).await.map_err(|err| format!("Folder task failed: {err}"))?
 }
 
@@ -215,7 +215,7 @@ async fn workspace_read_file(app: tauri::AppHandle, path: String, max_bytes: usi
     if !path.is_absolute() || path.components().any(|part| matches!(part, std::path::Component::ParentDir)) {
         return Err("Invalid file path.".into());
     }
-    if !app.fs_scope().is_allowed(&path) { return Err("This file has not been selected for access in Morrow.".into()); }
+    if !app.fs_scope().is_allowed(&path) { return Err("This file has not been selected for access in Wrytrove.".into()); }
     let bytes = tauri::async_runtime::spawn_blocking(move || bounded_read(&path, max_bytes)).await.map_err(|err| format!("File task failed: {err}"))??;
     Ok(tauri::ipc::Response::new(bytes))
 }
@@ -278,7 +278,7 @@ fn create_workspace_child(root: &Path, relative: &str, name: &str, kind: &str) -
 #[tauri::command]
 async fn workspace_create_entry(app: tauri::AppHandle, root: String, parent_relative: String, name: String, kind: String) -> Result<(), String> {
     let root = PathBuf::from(root);
-    if !app.fs_scope().is_allowed(&root) { return Err("This folder has not been selected for access in Morrow.".into()); }
+    if !app.fs_scope().is_allowed(&root) { return Err("This folder has not been selected for access in Wrytrove.".into()); }
     // Scope check is on both the selected root and its verified descendant.
     tauri::async_runtime::spawn_blocking(move || {
         let parent = checked_workspace_parent(&root, &parent_relative)?;
@@ -361,7 +361,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![safe_write, take_launch_files, workspace_list_directory, workspace_read_file, workspace_create_entry])
         .run(tauri::generate_context!())
-        .expect("error while running Morrow");
+        .expect("error while running Wrytrove");
 }
 
 #[cfg(test)]
@@ -426,7 +426,7 @@ mod tests {
         assert_eq!(sha256_hex(b""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
         let old_hash = sha256_hex(b"original");
         fs::write(&path, b"changed by another app").unwrap();
-        assert!(atomic_write(&path, b"new", &old_hash, false).unwrap_err().contains("MORROW_FILE_CHANGED"));
+        assert!(atomic_write(&path, b"new", &old_hash, false).unwrap_err().contains("WRYTROVE_FILE_CHANGED"));
         assert_eq!(fs::read(&path).unwrap(), b"changed by another app");
         atomic_write(&path, b"new", &old_hash, true).unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"new");
@@ -522,7 +522,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("new file-📝.txt");
         fs::write(&path, b"valuable original").unwrap();
-        assert!(atomic_write(&path, b"replacement", "absent", false).unwrap_err().contains("MORROW_FILE_CHANGED"));
+        assert!(atomic_write(&path, b"replacement", "absent", false).unwrap_err().contains("WRYTROVE_FILE_CHANGED"));
         assert_eq!(fs::read(&path).unwrap(), b"valuable original");
         assert!(atomic_write(&path, b"replacement", "", true).is_err());
         assert_eq!(fs::read(&path).unwrap(), b"valuable original");
@@ -538,10 +538,10 @@ mod tests {
         let hash = sha256_hex(original);
         atomic_write(&path, "updated 🦉".as_bytes(), &hash, false).unwrap();
         assert_eq!(fs::read(&path).unwrap(), "updated 🦉".as_bytes());
-        assert!(atomic_write(&path, b"stale", &hash, false).unwrap_err().contains("MORROW_FILE_CHANGED"));
+        assert!(atomic_write(&path, b"stale", &hash, false).unwrap_err().contains("WRYTROVE_FILE_CHANGED"));
         assert_eq!(fs::read(&path).unwrap(), "updated 🦉".as_bytes());
         fs::remove_file(&path).unwrap();
-        assert!(atomic_write(&path, b"stale", &hash, false).unwrap_err().contains("MORROW_FILE_CHANGED"));
+        assert!(atomic_write(&path, b"stale", &hash, false).unwrap_err().contains("WRYTROVE_FILE_CHANGED"));
         assert!(!path.exists());
     }
 }

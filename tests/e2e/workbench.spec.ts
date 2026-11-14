@@ -217,10 +217,10 @@ test('Arena browser workflow requires an explicit click, and API keys are not pe
 
 test('a failed recent-path opt-out is visible and can be cleared after storage recovers', async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('morrow.settings.v1', JSON.stringify({ rememberRecent: true, recentFiles: ['C:\\private\\note.txt'] }));
+    localStorage.setItem('wrytrove.settings.v1', JSON.stringify({ rememberRecent: true, recentFiles: ['C:\\private\\note.txt'] }));
     const write = Storage.prototype.setItem;
     Storage.prototype.setItem = function (key, value) {
-      if (key === 'morrow.settings.v1' && (window as Window & { __failPreferences?: boolean }).__failPreferences) throw new DOMException('Storage full', 'QuotaExceededError');
+      if (key === 'wrytrove.settings.v1' && (window as Window & { __failPreferences?: boolean }).__failPreferences) throw new DOMException('Storage full', 'QuotaExceededError');
       return write.call(this, key, value);
     };
   });
@@ -230,11 +230,11 @@ test('a failed recent-path opt-out is visible and can be cleared after storage r
   await page.evaluate(() => { (window as Window & { __failPreferences?: boolean }).__failPreferences = true; });
   await page.getByRole('switch', { name: 'Remember recent files' }).click();
   await expect(page.locator('#settings-storage-message')).toContainText('Recent file paths could not be cleared');
-  expect(await page.evaluate(() => localStorage.getItem('morrow.settings.v1'))).toContain('private');
+  expect(await page.evaluate(() => localStorage.getItem('wrytrove.settings.v1'))).toContain('private');
   await page.evaluate(() => { (window as Window & { __failPreferences?: boolean }).__failPreferences = false; });
   await page.getByRole('button', { name: 'Clear recent files' }).click();
   await expect(page.locator('#settings-storage-message')).toBeHidden();
-  expect(await page.evaluate(() => localStorage.getItem('morrow.settings.v1'))).not.toContain('private');
+  expect(await page.evaluate(() => localStorage.getItem('wrytrove.settings.v1'))).not.toContain('private');
 });
 
 test('multi-folder workspace adds and removes roots without deleting files and searches across roots', async ({ page }) => {

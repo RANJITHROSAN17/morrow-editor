@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { countTextStats, dayKey, describeStats, goalProgress, isLargeDocument, MAX_STATS_CHARS, sanitizeGoal } from '../src/word-stats';
 
 /**
- * The status bar is the only place Morrow states numbers about your writing. These tests pin
+ * The status bar is the only place Wrytrove states numbers about your writing. These tests pin
  * the definitions so the numbers cannot drift silently between releases.
  */
 describe('word and character statistics', () => {

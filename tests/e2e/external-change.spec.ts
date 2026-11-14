@@ -14,7 +14,7 @@ async function openNative(page: Page) {
       invoke: async (command: string) => {
         if (command === 'take_launch_files') return ['C:\\notes\\draft.txt'];
         if (command === 'plugin:event|listen') return ++next;
-        if (command === 'safe_write') { win.__writes++; throw 'MORROW_FILE_CHANGED'; }
+        if (command === 'safe_write') { win.__writes++; throw 'WRYTROVE_FILE_CHANGED'; }
         if (command === 'workspace_read_file') {
           if (win.__failRead) throw new Error('Permission denied');
           if (win.__holdRead) await new Promise<void>((resolve) => { win.__releaseRead = resolve; });

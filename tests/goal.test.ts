@@ -1,7 +1,22 @@
-import { describe, expect, it } from 'vitest';
-import { DailyGoalTracker, emptyGoalState, sanitizeGoalState } from '../src/goal';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DailyGoalTracker, emptyGoalState, GOAL_KEY, LEGACY_GOAL_KEY, loadGoalState, sanitizeGoalState, saveGoalState } from '../src/goal';
 
 const fixedDay = (day = '2026-11-13') => () => day;
+
+function memoryStorage(initial: Record<string, string> = {}): Storage {
+  const values = new Map(Object.entries(initial));
+  return {
+    get length() { return values.size; },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => [...values.keys()][index] ?? null,
+    removeItem: (key) => { values.delete(key); },
+    setItem: (key, value) => { values.set(key, String(value)); },
+  };
+}
+
+beforeEach(() => { vi.stubGlobal('localStorage', memoryStorage()); });
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('daily goal state', () => {
   it('starts empty and stores the day it belongs to', () => {
@@ -95,5 +110,39 @@ describe('daily goal tracking', () => {
     const tracker = new DailyGoalTracker(null, fixedDay());
     expect(tracker.enabled).toBe(false);
     expect(tracker.status()).toMatchObject({ percent: 0, met: false });
+  });
+});
+
+
+describe('goal persistence across the Wrytrove rename', () => {
+  it('loads a legacy goal when no current goal exists', () => {
+    const legacy = { version: 1, date: '2026-11-13', words: 120, target: 500, baselines: { doc: 40 } };
+    localStorage.setItem(LEGACY_GOAL_KEY, JSON.stringify(legacy));
+    expect(loadGoalState()).toEqual(legacy);
+    const tracker = new DailyGoalTracker(loadGoalState(), fixedDay());
+    expect(tracker.words).toBe(120);
+    expect(tracker.target).toBe(500);
+  });
+
+  it('prefers the current goal over a stale legacy copy', () => {
+    localStorage.setItem(LEGACY_GOAL_KEY, JSON.stringify({ version: 1, date: '2026-11-13', words: 10, target: 100, baselines: {} }));
+    localStorage.setItem(GOAL_KEY, JSON.stringify({ version: 1, date: '2026-11-13', words: 90, target: 500, baselines: {} }));
+    expect(loadGoalState()).toMatchObject({ words: 90, target: 500 });
+  });
+
+  it('returns null for corrupt or blocked storage instead of blocking startup', () => {
+    localStorage.setItem(GOAL_KEY, '{broken');
+    expect(loadGoalState()).toBeNull();
+    vi.stubGlobal('localStorage', { getItem: () => { throw new DOMException('Blocked', 'SecurityError'); } });
+    expect(loadGoalState()).toBeNull();
+  });
+
+  it('saves under the current key and reports quota failure without throwing', () => {
+    const state = emptyGoalState('2026-11-13', 500);
+    expect(saveGoalState(state)).toBe(true);
+    expect(JSON.parse(localStorage.getItem(GOAL_KEY)!)).toEqual(state);
+    expect(localStorage.getItem(LEGACY_GOAL_KEY)).toBeNull();
+    vi.stubGlobal('localStorage', { setItem: () => { throw new DOMException('Full', 'QuotaExceededError'); } });
+    expect(saveGoalState(state)).toBe(false);
   });
 });

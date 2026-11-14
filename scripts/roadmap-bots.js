@@ -1,5 +1,5 @@
 /**
- * roadmap-bots.js — zero-dependency GitHub automation helpers for Morrow Editor.
+ * roadmap-bots.js — zero-dependency GitHub automation helpers for Wrytrove Editor.
  *
  * Subcommands:
  *   node scripts/roadmap-bots.js status [--issues-json FILE] [--out FILE]
@@ -14,6 +14,10 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const STATUS_MARKER = "<!-- roadmap-status -->";
 export const PR_MARKER = "<!-- pr-guide-bot -->";
 const ROADMAP_MARKER_RE = /<!--\s*roadmap:([A-Za-z0-9_-]+)\s*-->/;
+// Issues filed before the Wrytrove rename keep their original markers. Normalize only
+// the known product prefix so unrelated roadmap namespaces are never rewritten.
+const LEGACY_ROADMAP_PREFIX = "morrow-";
+const ROADMAP_PREFIX = "wrytrove-";
 
 function argValue(argv, flag, fallback = "") {
   const idx = argv.indexOf(flag);
@@ -26,7 +30,8 @@ export function loadRoadmap(path = join(ROOT, ".github/roadmap.json")) {
 
 export function extractMarkerId(body) {
   const m = ROADMAP_MARKER_RE.exec(String(body || ""));
-  return m ? m[1] : null;
+  if (!m) return null;
+  return m[1].startsWith(LEGACY_ROADMAP_PREFIX) ? ROADMAP_PREFIX + m[1].slice(LEGACY_ROADMAP_PREFIX.length) : m[1];
 }
 
 export function detectDrift(roadmap, repoRoot = ROOT) {
@@ -81,7 +86,7 @@ export function renderStatusMarkdown(roadmap, issues = [], repoRoot = ROOT) {
 
   const lines = [
     STATUS_MARKER,
-    "# Morrow Editor — Roadmap Status",
+    "# Wrytrove Editor — Roadmap Status",
     "",
     `Progress: \`${bar}\` **${doneCount}/${items.length}** curated tasks completed.`,
     "",
@@ -206,7 +211,7 @@ export function renderPrContext(roadmap, changedFiles, prBody = "") {
     if (hit.length) matches.push({ item, hit });
   }
   const hasCloses = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#\d+/i.test(prBody || "");
-  const lines = [PR_MARKER, "### Morrow PR Context"];
+  const lines = [PR_MARKER, "### Wrytrove PR Context"];
   if (!matches.length) {
     lines.push("", "No active `.github/roadmap.json` entry directly matches the touched files.");
   } else {

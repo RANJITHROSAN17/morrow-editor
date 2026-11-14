@@ -30,7 +30,7 @@ describe('tags, tasks, callouts and math', () => {
     expect(renderInlineTags('a #work item')).toBe('a [#work](tag:work) item');
     expect(renderInlineTags('# Heading')).toBe('# Heading');
     expect(renderInlineTags('```\n#code\n```')).toBe('```\n#code\n```');
-    expect(renderInlineTags('see #project/morrow.')).toBe('see [#project/morrow](tag:project/morrow).');
+    expect(renderInlineTags('see #project/wrytrove.')).toBe('see [#project/wrytrove](tag:project/wrytrove).');
   });
 
   it('renders task checkboxes as text glyphs', () => {

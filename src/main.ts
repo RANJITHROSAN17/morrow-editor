@@ -22,7 +22,7 @@ import { MarkdownPreview } from './markdown-preview';
 import { applyLineOperation, type LineOperation } from './line-ops';
 import { applySmartTypography, toggleBold, toggleBulletList, toggleHeading, toggleItalic, toggleInlineCode, toggleNumberedList, toggleQuote, toggleStrikethrough, toggleTaskList, wrapCodeBlock, wrapLink, type TextEdit } from './markdown-format';
 import { countTextStats, describeStats, isLargeDocument, type TextStats } from './word-stats';
-import { DailyGoalTracker } from './goal';
+import { DailyGoalTracker, loadGoalState, saveGoalState } from './goal';
 import { extractOutline, headingAt, isMarkdownName, rankHeadings, type Heading } from './outline';
 import { collectTags, extractWikiLinks, resolveWikiTarget } from './notes';
 import { NoteIndex } from './note-index';
@@ -62,7 +62,7 @@ interface Doc {
 }
 interface ConfirmButton { id: string; label: string; style?: 'primary' | 'danger'; }
 
-class MorrowApp {
+class WrytroveApp {
   private settings: Settings;
   private settingsReadFailed: boolean;
   private settingsSaveFailed = false;
@@ -105,7 +105,7 @@ class MorrowApp {
   private indexBusy = false;
   private indexRefreshTimer = 0;
   private indexController: AbortController | null = null;
-  private goalTracker = new DailyGoalTracker(null);
+  private goalTracker = new DailyGoalTracker(loadGoalState());
   private statsTimer = 0;
   private stats: TextStats = countTextStats('');
   private outline: Heading[] = [];
@@ -539,7 +539,7 @@ class MorrowApp {
       changes: { from: target.from, to: target.to, insert: replacement },
       selection: { anchor: target.from + replacement.length },
       annotations: isolateHistory.of('full'),
-      userEvent: 'input.morrow-review',
+      userEvent: 'input.wrytrove-review',
     });
     this.view.focus();
   }
@@ -566,7 +566,7 @@ class MorrowApp {
         try { digest = await writeTo(target.ref, bytes, target.name, expected); break; }
         catch (error) {
           if (!(error instanceof ExternalChangeError)) throw error;
-          const choice = await this.confirm('File changed on disk', `“${target.name}” already exists, changed outside Morrow, or was removed since it was opened. Overwriting may lose changes.`, [
+          const choice = await this.confirm('File changed on disk', `“${target.name}” already exists, changed outside Wrytrove, or was removed since it was opened. Overwriting may lose changes.`, [
             { id: 'cancel', label: 'Cancel' }, { id: 'save-as', label: 'Save a copy' }, { id: 'overwrite', label: 'Overwrite', style: 'danger' },
           ], 'CHECK BEFORE SAVING');
           if (choice === 'cancel') return false;
@@ -707,7 +707,7 @@ class MorrowApp {
     $('#breadcrumb-root').textContent = doc.sample ? 'EXAMPLES' : 'YOUR FILES';
     $('#toolbar-dirty').hidden = !this.dirty(doc);
     $('#example-banner').hidden = !doc.sample;
-    const title = `${this.dirty(doc) ? '● ' : ''}${doc.name} — Morrow`;
+    const title = `${this.dirty(doc) ? '● ' : ''}${doc.name} — Wrytrove`;
     if (title !== this.lastTitle) {
       this.lastTitle = title; document.title = title;
       if (desktop) void getCurrentWindow().setTitle(title).catch(() => {});
@@ -765,8 +765,8 @@ class MorrowApp {
   }
 
   private persistGoal(): void {
-    try { localStorage.setItem('morrow.goal.v1', JSON.stringify(this.goalTracker.toJSON())); }
-    catch { /* A goal is optional; losing it must never block editing. */ }
+    // A goal is optional; losing it must never block editing.
+    saveGoalState(this.goalTracker.toJSON());
   }
 
   private setGoal(target: number): void {
@@ -913,7 +913,7 @@ class MorrowApp {
       const button = el('button', 'ambiguous'); button.type = 'button';
       const label = el('span', 'link-target'); label.textContent = `${entry.record.relative} (ambiguous link)`;
       button.append(label);
-      button.title = 'More than one note shares this name, so Morrow does not pick one for you.';
+      button.title = 'More than one note shares this name, so Wrytrove does not pick one for you.';
       item.append(button); backlinks.append(item);
     }
 
@@ -1535,7 +1535,7 @@ class MorrowApp {
       case 'settings': this.showDialog('settings-dialog'); break;
       case 'shortcuts': this.showDialog('help-dialog'); break;
       case 'ai': this.toggleAiPanel(); break;
-      case 'about': await this.confirm('A little space for big ideas.', `Morrow 0.4.0 is an open-source text and code editor. Your files stay yours. This is an early preview; save important work regularly.`, [{ id: 'ok', label: 'Sounds good', style: 'primary' }], 'ABOUT MORROW'); break;
+      case 'about': await this.confirm('A little space for big ideas.', `Wrytrove 0.4.0 is an open-source text and code editor. Your files stay yours. This is an early preview; save important work regularly.`, [{ id: 'ok', label: 'Sounds good', style: 'primary' }], 'ABOUT WRYTROVE'); break;
       case 'bold': case 'italic': case 'code': case 'strike': case 'link': case 'quote': case 'bullets': case 'numbers': case 'tasks': case 'code-block': case 'smart-typography': case 'heading':
         this.runFormat(action); break;
       case 'line-duplicate': this.runFormat('line-duplicate'); break;
@@ -1618,7 +1618,7 @@ class MorrowApp {
     if (this.settings.aiEnabled) {
       this.settings.aiEnabled = false; this.cancelAi(); clearGhost(this.view); this.persistSettings(); this.renderAiStatus(); return;
     }
-    const choice = await this.confirm('Turn on AI suggestions?', 'As you type, up to 3,500 characters before and 1,200 after your cursor are sent to Ollama at 127.0.0.1 on this computer. Ollama can route to cloud models, so a local address alone does not guarantee on-device processing. Verify your model and Ollama configuration. Suggestions turn off when Morrow restarts.', [
+    const choice = await this.confirm('Turn on AI suggestions?', 'As you type, up to 3,500 characters before and 1,200 after your cursor are sent to Ollama at 127.0.0.1 on this computer. Ollama can route to cloud models, so a local address alone does not guarantee on-device processing. Verify your model and Ollama configuration. Suggestions turn off when Wrytrove restarts.', [
       { id: 'cancel', label: 'Not now' }, { id: 'enable', label: 'Enable suggestions', style: 'primary' },
     ], 'YOUR CHOICE');
     if (choice !== 'enable') return;
@@ -1721,7 +1721,7 @@ class MorrowApp {
     catch (error) { this.renderAiActionStatus(this.errorText(error), true); return; }
 
     if (!this.aiActionConsent || this.aiActionConsentModel !== model) {
-      const choice = await this.confirm('Send this selection to Ollama?', `“${action.label}” sends only the ${target.original.length.toLocaleString()} selected characters and your instruction to Ollama at 127.0.0.1:11434 using “${model}”. Inline suggestions may be off; this is a separate request. A loopback address does not guarantee local processing, because Ollama can route to a cloud model. Nothing is applied automatically: you review a diff first. Morrow asks once per session per model and sends nothing when you cancel.`, [
+      const choice = await this.confirm('Send this selection to Ollama?', `“${action.label}” sends only the ${target.original.length.toLocaleString()} selected characters and your instruction to Ollama at 127.0.0.1:11434 using “${model}”. Inline suggestions may be off; this is a separate request. A loopback address does not guarantee local processing, because Ollama can route to a cloud model. Nothing is applied automatically: you review a diff first. Wrytrove asks once per session per model and sends nothing when you cancel.`, [
         { id: 'cancel', label: 'Cancel' },
         { id: 'send', label: 'Send and review', style: 'primary' },
       ], 'YOUR CHOICE');
@@ -2106,7 +2106,7 @@ class MorrowApp {
       if (event.payload.type === 'leave') overlay.hidden = true;
       if (event.payload.type === 'drop') { overlay.hidden = true; void this.openNativePaths(event.payload.paths); }
     });
-    await listen('morrow-open-files', () => { void this.openLaunchFiles(); });
+    await listen('wrytrove-open-files', () => { void this.openLaunchFiles(); });
     await this.openLaunchFiles();
   }
   private async openLaunchFiles(): Promise<void> {
@@ -2123,10 +2123,10 @@ class MorrowApp {
   }
 }
 
-const app = new MorrowApp();
+const app = new WrytroveApp();
 void app.start().catch((error) => {
   console.error(error);
-  const message = `Morrow couldn't start: ${error instanceof Error ? error.message : String(error)}`;
+  const message = `Wrytrove couldn't start: ${error instanceof Error ? error.message : String(error)}`;
   $('#startup-status').textContent = message;
   const toast = $('#toast'); toast.textContent = message; toast.hidden = false;
 });

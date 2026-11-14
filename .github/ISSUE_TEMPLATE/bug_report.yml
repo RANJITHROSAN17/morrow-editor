@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in Morrow is broken or behaves unexpectedly
+description: Something in Wrytrove is broken or behaves unexpectedly
 labels: [bug]
 body:
   - type: markdown
@@ -18,7 +18,7 @@ body:
   - type: input
     id: install
     attributes:
-      label: How are you running Morrow?
+      label: How are you running Wrytrove?
       placeholder: "Installed NSIS build / `npm run tauri dev` / browser preview"
     validations:
       required: true
