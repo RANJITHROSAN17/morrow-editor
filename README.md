@@ -24,7 +24,7 @@ Wrytrove is a Windows text and code editor designed to be approachable for every
 > to contribute. See [CONTRIBUTING.md](CONTRIBUTING.md) for exactly which work needs Windows.
 
 > [!IMPORTANT]
-> **Early preview, not a production release.** Keep backups and test with non-critical files first. The Windows installer is unsigned, and consumer Windows 10/11, full accessibility and security audits, and performance benchmarks remain outstanding.
+> **Early preview, not a production release.** Keep backups and test with non-critical files first. Current tagged releases produced by the Windows workflow state whether their installer is signed or an explicit unsigned preview; consumer Windows 10/11, full accessibility and security audits, and performance benchmarks remain outstanding. See the [release verification and rollback guide](docs/RELEASE-VERIFICATION.md).
 
 ![Wrytrove's dark editor showing a Python sample, folder sidebar, tabs, and lavender accents](docs/images/wrytrove-browser-preview.png)
 
@@ -32,11 +32,11 @@ Wrytrove is a Windows text and code editor designed to be approachable for every
 
 ## Choose your first run
 
-- **Use the Windows app:** [download the latest preview and its checksum file](https://github.com/RANJITHROSAN17/morrow-editor/releases/latest). No Node.js or Rust is needed for a packaged installer. It is unsigned; keep backups and use non-critical files.
+- **Use the Windows app:** [download the latest preview and its verification assets](https://github.com/RANJITHROSAN17/morrow-editor/releases/latest). No Node.js or Rust is needed for a packaged installer. Check its signing mode and checksum before running it; keep backups and use non-critical files.
 - **Evaluate the UI or contribute without Windows:** use the [browser UI preview](#browser-ui-preview); it does not verify native desktop behavior.
 - **Build the native app:** follow [Windows app from source](#windows-app-from-source) and its toolchain prerequisites.
 
-For your first desktop session, open a disposable text file, edit, save and reopen it before enabling optional AI features. Compare the installer’s SHA-256 against the attached `SHA256SUMS.txt`; in PowerShell use `Get-FileHash .\Morrow_0.4.0_x64-setup.exe -Algorithm SHA256`. A matching checksum verifies the downloaded bytes against that release’s checksum, not publisher identity or safety.
+For your first desktop session, open a disposable text file, edit, save and reopen it before enabling optional AI features. Compare the installer’s SHA-256 against the attached `SHA256SUMS.txt`; in PowerShell use `Get-FileHash .\Morrow_0.4.0_x64-setup.exe -Algorithm SHA256`. A matching checksum verifies the downloaded bytes against that release’s checksum, not publisher identity or safety. The [verification guide](docs/RELEASE-VERIFICATION.md) also covers Authenticode, provenance, WinGet, rollback and reinstall.
 
 > **Naming note:** the product is now **Wrytrove**. The GitHub repository URL and the already published `Morrow_0.4.0_x64-setup.exe` asset keep their historical names until a separate repository/release rename; links and checksum instructions remain valid.
 
@@ -78,13 +78,13 @@ npm run tauri build -- --target x86_64-pc-windows-msvc
 
 The NSIS installer is written to `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`. Windows may warn about an unknown publisher. If WebView2 is missing, its bootstrapper may need internet access.
 
-[**Download v0.4.0 for Windows**](https://github.com/RANJITHROSAN17/morrow-editor/releases/latest) — a 3.6 MB NSIS installer, no Rust toolchain required. It is unsigned, so Windows will warn about an unknown publisher; that warning is accurate. `SHA256SUMS.txt` is attached, and checking the download against it takes one command:
+[**Download v0.4.0 for Windows**](https://github.com/RANJITHROSAN17/morrow-editor/releases/latest) — a 3.6 MB NSIS installer, no Rust toolchain required. For releases produced by the current workflow, `SIGNING-MODE.txt` is authoritative: `signed` means its Authenticode publisher and timestamp were verified; `unsigned-preview` means Windows may warn about an unknown publisher, and that warning is accurate. `SHA256SUMS.txt` is attached, and checking the download against it takes one command:
 
 ```bash
 sha256sum Morrow_0.4.0_x64-setup.exe
 ```
 
-This is a **preview**, not a production release: it has not had consumer Windows testing, an accessibility audit or a security audit. What has and has not been verified is written down in [`docs/IMPLEMENTATION-0.4.0.md`](docs/IMPLEMENTATION-0.4.0.md#verification-and-limits).
+This is a **preview**, not a production release: it has not had consumer Windows testing, an accessibility audit or a security audit. What has and has not been verified is written down in [`docs/IMPLEMENTATION-0.4.0.md`](docs/IMPLEMENTATION-0.4.0.md#verification-and-limits). For release files, signatures, provenance, the package-manager route and rollback instructions, read [`docs/RELEASE-VERIFICATION.md`](docs/RELEASE-VERIFICATION.md).
 
 ### Browser UI preview
 

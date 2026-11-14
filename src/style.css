@@ -30,6 +30,7 @@
   --syntax-green: #aad7ad;
   --syntax-orange: #e9c39e;
   --syntax-red: #f0aaa9;
+  --focus-dim: #a6a8b9;
   --shadow: 0 22px 65px #0709148c;
 }
 :root[data-theme="light"] {
@@ -62,6 +63,7 @@
   --syntax-green: #3e754d;
   --syntax-orange: #965629;
   --syntax-red: #a34555;
+  --focus-dim: #626176;
   --shadow: 0 22px 65px #33304732;
 }
 * { box-sizing: border-box; }
@@ -567,15 +569,19 @@ textarea:focus-visible { outline: 2px solid var(--accent-strong); outline-offset
 /* Focus, typewriter and zen modes */
 .cm-focus-active { background: #ae94df18; border-radius: 3px; }
 :root[data-theme="light"] .cm-focus-active { background: #6745a51a; }
-/* Dim everything outside the decorated range without touching the caret line's contrast. */
-html.focus-mode .cm-line { opacity: .38; transition: opacity .14s ease; }
-html.focus-mode .cm-line:has(.cm-focus-active), html.focus-mode .cm-line .cm-focus-active { opacity: 1; }
-html.focus-mode .cm-activeLine { opacity: 1; }
-html.focus-mode .cm-gutters { opacity: .5; }
+/* Dim with an opaque, theme-specific color so text stays readable at 4.5:1 or better. */
+html.focus-mode .cm-line:not(:has(.cm-focus-active)) { color: var(--focus-dim) !important; opacity: 1; transition: color .14s ease; }
+html.focus-mode .cm-line:not(:has(.cm-focus-active)) * { color: inherit !important; }
+html.focus-mode .cm-line:has(.cm-focus-active) { color: var(--text) !important; opacity: 1; }
+html.focus-mode .cm-line:has(.cm-focus-active) * { color: inherit !important; }
+html.focus-mode .cm-gutters { color: var(--focus-dim); opacity: 1; }
 html.zen-mode .topbar, html.zen-mode .tabs-row, html.zen-mode .statusbar, html.zen-mode .document-toolbar, html.zen-mode .sidebar, html.zen-mode .notes-panel { display: none !important; }
 html.zen-mode .editor-shell { padding-bottom: 60px; }
 html.zen-mode .editor { max-width: 900px; margin: 0 auto; }
 html.typewriter-mode .editor .cm-scroller { scroll-padding-block: 40vh; }
+@media (prefers-reduced-motion: reduce) {
+  html.focus-mode .cm-line { transition: none !important; }
+}
 
 /* Settings value + minimap/serif support */
 .settings-value { color: var(--muted); font-size: 11px; }

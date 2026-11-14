@@ -16,9 +16,11 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: '20'
@@ -29,6 +31,12 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
+      - name: Set deterministic source timestamp
+        shell: pwsh
+        run: |
+          $timestamp = git show -s --format=%ct $env:GITHUB_SHA
+          if (-not $timestamp) { throw 'Could not determine the source commit timestamp.' }
+          "SOURCE_DATE_EPOCH=$timestamp" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
       - name: Install dependencies
         run: npm ci
       - name: Frontend build and unit tests
@@ -38,66 +46,193 @@ jobs:
           npm test
       - name: Install headless Chromium for UI tests
         run: npx playwright install --only-shell chromium
-      # Skipped on a tag push. A tag is cut from a commit that already passed this step on `main`;
-      # re-running it means one flaky WebDriver start blocks the release, which is the exact
-      # failure the release job exists to avoid. Everything that gates correctness (unit tests,
-      # Rust tests, the bundle build itself) still runs.
       - name: Browser UI regression tests on Windows
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: npm run test:e2e
       - name: Rust file-safety tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked
-      - name: Build unsigned Windows installer
-        run: npm run tauri build -- --target x86_64-pc-windows-msvc
-      - name: Write installer checksums
+      - name: Prepare dependency SBOM and license gate
         shell: pwsh
         run: |
-          $dir = 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis'
-          Get-ChildItem $dir -Filter '*-setup.exe' | ForEach-Object {
-            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
-            "$hash  $($_.Name)" | Out-File -Append -Encoding utf8 "$dir/SHA256SUMS.txt"
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item package-lock.json release/package-lock.json
+          Copy-Item src-tauri/Cargo.lock release/Cargo.lock
+          node scripts/release.mjs sbom release
+      - name: Verify source version for a tagged build
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        shell: pwsh
+        run: node scripts/release.mjs verify-tag $env:GITHUB_REF_NAME
+      - name: Build unsigned Windows installer
+        run: npm run tauri build -- --target x86_64-pc-windows-msvc
+      - name: Stage installer
+        shell: pwsh
+        run: node scripts/release.mjs stage-installers src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis release
+      - name: Determine tagged-release signing mode
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        id: signing_mode
+        shell: pwsh
+        env:
+          MORROW_SIGNING_CERTIFICATE: ${{ secrets.MORROW_SIGNING_CERTIFICATE }}
+          MORROW_SIGNING_CERTIFICATE_THUMBPRINT: ${{ vars.MORROW_SIGNING_CERTIFICATE_THUMBPRINT }}
+          MORROW_SIGNING_REQUIRED: ${{ vars.MORROW_SIGNING_REQUIRED || 'false' }}
+        run: |
+          $hasCertificate = -not [string]::IsNullOrWhiteSpace($env:MORROW_SIGNING_CERTIFICATE)
+          $hasThumbprint = -not [string]::IsNullOrWhiteSpace($env:MORROW_SIGNING_CERTIFICATE_THUMBPRINT)
+          if (($env:MORROW_SIGNING_REQUIRED -eq 'true' -or $hasThumbprint) -and -not $hasCertificate) { throw 'Tagged release signing is configured or required, but MORROW_SIGNING_CERTIFICATE is not available.' }
+          if ($hasCertificate) { 'configured=true' | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT } else { 'configured=false' | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT }
+      - name: Sign and verify the tagged installer
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && steps.signing_mode.outputs.configured == 'true' }}
+        shell: pwsh
+        env:
+          MORROW_SIGNING_CERTIFICATE: ${{ secrets.MORROW_SIGNING_CERTIFICATE }}
+          MORROW_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.MORROW_SIGNING_CERTIFICATE_PASSWORD }}
+          MORROW_SIGNING_CERTIFICATE_THUMBPRINT: ${{ vars.MORROW_SIGNING_CERTIFICATE_THUMBPRINT }}
+          MORROW_TIMESTAMP_URL: ${{ vars.MORROW_TIMESTAMP_URL || 'https://timestamp.digicert.com' }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:MORROW_SIGNING_CERTIFICATE_PASSWORD)) { throw 'A signing certificate is configured but its password is missing.' }
+          if ([string]::IsNullOrWhiteSpace($env:MORROW_SIGNING_CERTIFICATE_THUMBPRINT)) { throw 'A signing certificate is configured but its expected thumbprint is missing.' }
+          $expectedThumbprint = ($env:MORROW_SIGNING_CERTIFICATE_THUMBPRINT -replace '\s', '').ToUpperInvariant()
+          $pfx = Join-Path $env:RUNNER_TEMP 'wrytrove-release-signing.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:MORROW_SIGNING_CERTIFICATE))
+          $kits = ${env:ProgramFiles(x86)}
+          $signtool = Get-ChildItem "$kits\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1
+          if (-not $signtool) { throw 'Windows SDK signtool.exe was not found.' }
+          $report = @()
+          Get-ChildItem release -Filter '*-setup.exe' | ForEach-Object {
+            & $signtool.FullName sign /fd SHA256 /f $pfx /p $env:MORROW_SIGNING_CERTIFICATE_PASSWORD /tr $env:MORROW_TIMESTAMP_URL /td SHA256 /d 'Wrytrove' $_.FullName
+            if ($LASTEXITCODE -ne 0) { throw "signtool sign failed for $($_.Name)." }
+            & $signtool.FullName verify /pa /all $_.FullName
+            if ($LASTEXITCODE -ne 0) { throw "signtool verification failed for $($_.Name)." }
+            $signature = Get-AuthenticodeSignature $_.FullName
+            if ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate) { throw "Authenticode verification was not valid for $($_.Name)." }
+            $actualThumbprint = ($signature.SignerCertificate.Thumbprint -replace '\s', '').ToUpperInvariant()
+            if ($actualThumbprint -ne $expectedThumbprint) { throw "The signed publisher thumbprint for $($_.Name) does not match MORROW_SIGNING_CERTIFICATE_THUMBPRINT." }
+            if (-not $signature.TimeStamperCertificate) { throw "The Authenticode signature for $($_.Name) has no trusted timestamp." }
+            $report += "$($_.Name): Subject=$($signature.SignerCertificate.Subject); Thumbprint=$actualThumbprint; Timestamp=$($signature.TimeStamperCertificate.Subject)"
+          }
+          'signed' | Set-Content -Encoding utf8 release/SIGNING-MODE.txt
+          $report | Set-Content -Encoding utf8 release/SIGNATURE-VERIFICATION.txt
+          Remove-Item $pfx -Force
+      - name: Mark the explicit unsigned preview mode
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') || steps.signing_mode.outputs.configured != 'true' }}
+        shell: pwsh
+        run: |
+          'unsigned-preview' | Set-Content -Encoding utf8 release/SIGNING-MODE.txt
+          'No publisher certificate was configured for this preview. Windows may show an unknown-publisher warning.' | Set-Content -Encoding utf8 release/SIGNATURE-VERIFICATION.txt
+      - name: Write release checksums and manifests
+        shell: pwsh
+        run: |
+          node scripts/release.mjs checksums release
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            node scripts/release.mjs winget release $env:GITHUB_REF_NAME
+            node scripts/release.mjs manifest release $env:GITHUB_REF_NAME $env:GITHUB_SHA
           }
       - uses: actions/upload-artifact@v7
         with:
-          name: Wrytrove-windows-x64-unsigned
-          path: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/SHA256SUMS.txt
+          name: Wrytrove-windows-x64-release
+          path: release
           if-no-files-found: error
 
-  # Publishing is a separate job so the writable token exists ONLY on a tag push. Inline in the
-  # build job it would put `contents: write` on every pull-request run too - a widening nobody
-  # notices until it is abused. The build job keeps the workflow default, `contents: read`.
+  # Publishing is a separate job so writable contents, attestation and OIDC permissions exist ONLY
+  # on a tag push. The build job stays read-only, including on every pull request.
   publish:
-    name: Attach the installer to the release
+    name: Attach the verified installer and provenance to the release
     needs: build-windows
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
-          name: Wrytrove-windows-x64-unsigned
+          name: Wrytrove-windows-x64-release
           path: dist
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+      - name: Refuse mismatched release inputs
+        run: node scripts/release.mjs verify-release dist "$GITHUB_REF_NAME" "$GITHUB_SHA"
+      - name: Create GitHub artifact provenance attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/*-setup.exe
+            dist/package-lock.json
+            dist/Cargo.lock
+            dist/npm-sbom.cdx.json
+            dist/cargo-metadata.json
+      - name: Download offline provenance bundles
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/attestations "$RUNNER_TEMP/wrytrove-attestations"
+          for subject in dist/*-setup.exe dist/package-lock.json dist/Cargo.lock dist/npm-sbom.cdx.json dist/cargo-metadata.json; do
+            name="${subject#dist/}"
+            subject_dir="$RUNNER_TEMP/wrytrove-attestations/$name"
+            mkdir -p "$subject_dir"
+            for attempt in 1 2 3 4 5; do
+              rm -f "$subject_dir"/sha256*.jsonl
+              if (cd "$subject_dir" && gh attestation download "$GITHUB_WORKSPACE/$subject" --repo "$GITHUB_REPOSITORY" --predicate-type 'https://slsa.dev/provenance/v1'); then
+                break
+              fi
+              if [[ "$attempt" == 5 ]]; then
+                echo "Could not download the provenance bundle for $name" >&2
+                exit 1
+              fi
+              sleep 5
+            done
+            mapfile -t bundles < <(find "$subject_dir" -maxdepth 1 -type f -name 'sha256*.jsonl' -print)
+            if [[ "${#bundles[@]}" != 1 ]]; then
+              echo "Expected one provenance bundle for $name, found ${#bundles[@]}" >&2
+              exit 1
+            fi
+            cp "${bundles[0]}" "dist/attestations/$name.intoto.jsonl"
+          done
+      - name: Prepare transparent release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mode="$(tr -d '\r\n' < dist/SIGNING-MODE.txt)"
+          installer="$(find dist -maxdepth 1 -type f -name '*-setup.exe' -printf '%f\n' | head -n 1)"
+          if [[ "$mode" == "signed" ]]; then
+            trust='This installer is Authenticode-signed and the Windows build verified the publisher certificate and RFC 3161 timestamp.'
+          else
+            trust='This is an **unsigned-preview**. Windows may show an unknown-publisher SmartScreen warning; that warning is accurate.'
+          fi
+          cat > dist/RELEASE-NOTES.md <<EOF
+          **Early preview, not a production release.** Keep backups and test with non-critical files first.
 
-      # The tag gets an installer a normal person can download. Without this the NSIS build is an
-      # artifact that expires, and the only documented install path stays "install Rust and MSVC".
+          $trust
+
+          Verify the downloaded bytes with \`SHA256SUMS.txt\`. The release also includes CycloneDX/npm and Cargo dependency inventories, a license report, a release-specific winget manifest, and a GitHub artifact provenance attestation.
+
+          Without Node, Rust or a GitHub token, verify the attached provenance bundle with \`gh attestation verify $installer --repo $GITHUB_REPOSITORY --bundle attestations/$installer.intoto.jsonl\`. Follow [the release verification guide](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/RELEASE-VERIFICATION.md) for checksum and publisher checks.
+
+          Wrytrove has no automatic updater. To roll back, uninstall this preview from Windows Settings and install an earlier tagged release after verifying its own checksum and signing mode.
+          EOF
       - name: Publish
         uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/*-setup.exe
             dist/SHA256SUMS.txt
+            dist/npm-sbom.cdx.json
+            dist/cargo-metadata.json
+            dist/LICENSE-REPORT.json
+            dist/RELEASE-MANIFEST.json
+            dist/PROVENANCE.md
+            dist/SIGNING-MODE.txt
+            dist/SIGNATURE-VERIFICATION.txt
+            dist/package-lock.json
+            dist/Cargo.lock
+            dist/attestations/*.intoto.jsonl
+            dist/winget/*.yaml
+          body_path: dist/RELEASE-NOTES.md
           prerelease: true
-          body: |
-            **Early preview, not a production release.** Keep backups and test with non-critical
-            files first.
-
-            The Windows installer is **unsigned**, so Windows will warn about an unknown
-            publisher. That warning is accurate: nobody has verified this binary for you. Check
-            the download against `SHA256SUMS.txt` before running it.
-
-            Consumer Windows 10/11 testing, full accessibility and security audits, and
-            performance benchmarks remain outstanding. What has and has not been verified is
-            written down in `docs/IMPLEMENTATION-0.4.0.md#verification-and-limits`.

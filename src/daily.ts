@@ -74,21 +74,31 @@ export function dailyNotePath(format: DailyFormat, date: Date, folder = ''): str
       : format === 'yyyy-mm'
         ? `${date.getFullYear()}-${pad(date.getMonth() + 1)}`
         : isoDate(date);
-  const clean = folder.trim().replace(/^[\\/]+|[\\/]+$/gu, '').replace(/\\/gu, '/');
-  if (!clean) return base;
-  if (!isSafeRelativePath(clean)) throw new Error('Choose a folder name without special characters.');
-  return `${clean}/${base}`;
+  const rawFolder = folder.trim();
+  // Do not trim a leading separator before validation: `/tmp`, `\\tmp` and UNC paths
+  // must not turn into an apparently safe child folder after normalization.
+  if (!rawFolder) return base;
+  if (/^[\\/]/u.test(rawFolder) || !isSafeRelativePath(rawFolder.replace(/[\\/]+$/gu, '').replace(/\\/gu, '/'))) {
+    throw new Error('Choose a relative folder name inside the workspace.');
+  }
+  const clean = rawFolder.replace(/[\\/]+$/gu, '').replace(/\\/gu, '/');
+  const result = `${clean}/${base}`;
+  if (!isSafeRelativePath(result)) throw new Error('Choose a relative folder name inside the workspace.');
+  return result;
 }
 
-/** Reject `..`, drive letters, control characters and reserved Windows names, segment by segment. */
+/** Reject absolute paths, traversal, control characters and reserved Windows names, segment by segment. */
 export function isSafeRelativePath(path: string): boolean {
-  if (!path || path.length > 240) return false;
-  const segments = path.split('/');
-  return segments.every((segment) => segment.length > 0
-    && segment !== '.' && segment !== '..'
-    && !/[<>:"|?*\u0000-\u001f]/u.test(segment)
-    && !/[ .]$/u.test(segment)
-    && !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu.test(segment));
+  if (typeof path !== 'string' || !path || path.length > 240) return false;
+  // Accept either separator for a relative Windows path, but reject rooted and
+  // drive-qualified spellings before normalizing them into portable `/` segments.
+  if (/^[\\/]/u.test(path) || /^[a-z]:/iu.test(path)) return false;
+  const segments = path.replace(/\\/gu, '/').split('/');
+  return segments.every((segment) => {
+    if (!segment || segment === '.' || segment === '..' || /[<>:"|?*\u0000-\u001f]/u.test(segment) || /[ .]$/u.test(segment)) return false;
+    const stem = segment.split(/[. ]/u, 1)[0];
+    return !/^(?:con|prn|aux|nul|clock\$|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³])$/iu.test(stem);
+  });
 }
 
 /** Expand `{{date}}`, `{{time}}`, `{{title}}`, `{{weekday}}` and `{{iso}}` in a template. */

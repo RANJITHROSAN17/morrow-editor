@@ -29,7 +29,7 @@ describe('critical text color contrast', () => {
         ['syntax-orange', 'editor'], ['syntax-red', 'editor'],
         ['primary-fg', 'primary-bg'], ['primary-muted', 'primary-bg'], ['accent', 'accent-dark'],
         ['text', 'selected'], ['muted', 'selected'], ['status-text', 'status-bg'],
-        ['text', 'surface'], ['muted', 'surface'], ['dim', 'app'],
+        ['text', 'surface'], ['muted', 'surface'], ['dim', 'app'], ['focus-dim', 'editor'],
       ]) {
         expect(contrast(variable(theme, foreground), variable(theme, background)), `${foreground} on ${background}`).toBeGreaterThanOrEqual(4.5);
       }
@@ -40,5 +40,11 @@ describe('critical text color contrast', () => {
     expect(css).toMatch(/\.editor\s+\.cm-editor\.cm-focused\s+\.cm-gutters\s*\{[^}]*border-left:/);
     const ghost = css.match(/\.cm-ghost\s*\{([^}]*)\}/)?.[1] ?? '';
     expect(ghost).not.toMatch(/opacity\s*:/);
+  });
+
+  it('dims focus-mode text with an opaque contrast-safe color and removes its transition for reduced motion', () => {
+    expect(css).toMatch(/html\.focus-mode \.cm-line:not\(:has\(\.cm-focus-active\)\)\s*\{[^}]*color:\s*var\(--focus-dim\)[^}]*opacity:\s*1/);
+    expect(css).not.toMatch(/html\.focus-mode \.cm-line\s*\{\s*opacity:\s*\.38/);
+    expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*html\.focus-mode \.cm-line\s*\{\s*transition:\s*none\s*!important/);
   });
 });

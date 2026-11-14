@@ -2,6 +2,11 @@
 
 ## Unreleased — after 0.4.0
 
+### Release trust
+
+- Add a read-only Windows build plus tag-only publish boundary with tag/version/commit/checksum guards, CycloneDX npm and Cargo metadata SBOMs, SPDX coverage validation, GitHub artifact attestations and downloadable offline provenance bundles.
+- Add optional Authenticode signing with RFC 3161 timestamping and expected publisher-thumbprint verification. A missing certificate remains an explicitly labelled `unsigned-preview`; no automatic updater or forced migration is introduced. See [`docs/RELEASE-VERIFICATION.md`](docs/RELEASE-VERIFICATION.md).
+
 ### Brand rename
 
 - Rename the product, package, Cargo crate/library, Tauri product name, window title, file-association label, UI copy, documentation and automation from Morrow to **Wrytrove**. The version remains `0.4.0`.
