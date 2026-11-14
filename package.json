@@ -11,6 +11,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "benchmark": "vitest bench scripts/performance-baseline.bench.ts",
+    "benchmark:json": "vitest bench scripts/performance-baseline.bench.ts --run --reporter=json --outputFile=benchmark-results.json",
+    "benchmark:table": "node scripts/benchmark-table.mjs benchmark-results.json",
     "audit:static": "node scripts/security-audit.mjs",
     "tauri": "tauri"
   },

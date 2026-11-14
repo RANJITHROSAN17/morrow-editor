@@ -2,6 +2,7 @@ import { test } from 'vitest';
 import { decodeFile, encodeFile } from '../src/encoding';
 import { rankWorkspaceFiles } from '../src/workspace';
 import { reviewDiff } from '../src/change-review';
+import { diffLines } from 'diff';
 
 const MIB = 1024 * 1024;
 
@@ -57,6 +58,28 @@ test('Wrytrove pure workload baselines', async ({ bench }) => {
 
   register(bench('compute bounded 5,000-line review diff', { iterations: 10 }, () => {
     reviewDiff(reviewBefore, reviewAfter);
+  }));
+
+  // Reference implementations for the same inputs. They show what the product's
+  // safety checks cost; they are not claims about other editors.
+  for (const [label, bytes] of decodeFixtures) {
+    register(bench(`reference decode ${label} UTF-8 (TextDecoder, fatal)`, { iterations: 3 }, () => {
+      new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+    }));
+  }
+
+  for (const [label, text] of encodeFixtures) {
+    register(bench(`reference encode ${label} UTF-8 (TextEncoder)`, { iterations: 3 }, () => {
+      new TextEncoder().encode(text);
+    }));
+  }
+
+  register(bench('reference rank 5,000 files for Quick Open (substring filter)', { iterations: 20 }, () => {
+    quickOpenFiles.filter((file) => file.relative.toLowerCase().includes('main'));
+  }));
+
+  register(bench('reference unbounded 5,000-line review diff (diffLines)', { iterations: 10 }, () => {
+    diffLines(reviewBefore, reviewAfter);
   }));
 
   await Promise.all(runs);

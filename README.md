@@ -24,7 +24,7 @@ Wrytrove is a Windows text and code editor designed to be approachable for every
 > to contribute. See [CONTRIBUTING.md](CONTRIBUTING.md) for exactly which work needs Windows.
 
 > [!IMPORTANT]
-> **Early preview, not a production release.** Keep backups and test with non-critical files first. Current tagged releases produced by the Windows workflow state whether their installer is signed or an explicit unsigned preview; consumer Windows 10/11, full accessibility and security audits, and performance benchmarks remain outstanding. See the [release verification and rollback guide](docs/RELEASE-VERIFICATION.md).
+> **Early preview, not a production release.** Keep backups and test with non-critical files first. Current tagged releases produced by the Windows workflow state whether their installer is signed or an explicit unsigned preview; consumer Windows 10/11, full accessibility and security audits, and Windows performance measurements remain outstanding. The only benchmarks so far are a synthetic Linux baseline; see [Benchmarks](#benchmarks). See the [release verification and rollback guide](docs/RELEASE-VERIFICATION.md).
 
 ![Wrytrove's dark editor showing a Python sample, folder sidebar, tabs, and lavender accents](docs/images/wrytrove-browser-preview.png)
 
@@ -64,7 +64,7 @@ In PowerShell:
 
 ```powershell
 git clone https://github.com/RANJITHROSAN17/morrow-editor.git
-cd wrytrove-editor
+cd morrow-editor
 npm ci
 npm run tauri dev
 ```
@@ -129,6 +129,40 @@ Wrytrove does **not** embed the Arena website, transfer cookies or login session
 | Heading 1–6 / quote / bullets | `Ctrl+Shift+1…6` / `Ctrl+Shift+Q` / `Ctrl+Shift+U` |
 | Focus / typewriter / zen | `F8` / `F9` / `F11` |
 | Zoom in / out / reset | `Ctrl++` / `Ctrl+-` / `Ctrl+0` |
+
+## Benchmarks
+
+These numbers are a **synthetic, Linux-only baseline**. They were measured in a Linux sandbox with Vitest bench and generated inputs. They have **not** been measured on Windows or in WebView2, so they say nothing about the installed app's startup, memory use, typing latency or file dialogs. They are **not** comparisons with other editors.
+
+Each Wrytrove function is run next to a reference that does the same core job with a standard library or a simpler algorithm, so you can see what Wrytrove's extra work costs:
+
+| Workload | Wrytrove | Reference | Wrytrove ÷ reference |
+| --- | ---: | ---: | ---: |
+| Decode 1 MiB UTF-8 | 2.07 ms | 0.54 ms (`TextDecoder`, fatal) | 3.9× |
+| Decode 5 MiB UTF-8 | 10.59 ms | 3.31 ms | 3.2× |
+| Decode 20 MiB UTF-8 | 43.57 ms | 14.34 ms | 3.0× |
+| Encode 1 MiB UTF-8 | 5.52 ms | 0.39 ms (`TextEncoder`) | 14× |
+| Encode 5 MiB UTF-8 | 28.38 ms | 1.70 ms | 17× |
+| Quick Open, 5,000 files | 3.51 ms | 0.22 ms (substring filter) | 16× |
+| Review diff, 5,000 lines | 1.02 ms | 1.08 ms (`diffLines`, unbounded) | 0.94× |
+
+Environment: Linux 6.1 (x64) sandbox, Intel Xeon 2.60 GHz with 2 logical CPUs, Node 22.22.3. Each row is the mean over Vitest's sampled iterations, with relative margin of error between 1% and 3%. Across two runs in this sandbox the ratios moved: decode ranged from 3.0× to 4.0×, encode from 14× to 22×, and Quick Open from 16× to 17×. Treat them as rough, not as precise figures.
+
+How to read the table:
+
+- **Decode and encode are slower than the bare standard library** because Wrytrove also scans for NUL bytes, detects and normalizes line endings, and checks for unpaired surrogates before saving. Those checks are deliberate; the ratio is their cost.
+- **Quick Open** ranks files with a scoring function, not a plain substring filter, so the ratio is the cost of ranking. It is not a claim about search quality.
+- **Review diff** is about the same speed as the reference at this size. Its 120,000-character bound limits how much work a very large paste can cause; this benchmark does not measure inputs near that limit.
+
+Reproduce the table on your machine:
+
+```sh
+npm ci
+npm run benchmark:json
+npm run benchmark:table
+```
+
+`npm run benchmark` gives the interactive Vitest output. Head-to-head comparisons with other editors, and startup, memory and typing-latency measurements, are not done yet; they are tracked in [issue #65](https://github.com/RANJITHROSAN17/morrow-editor/issues/65). Until they are, Wrytrove makes no speed or memory advantage claim.
 
 ## Development and testing
 
